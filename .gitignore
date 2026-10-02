@@ -1,0 +1,24 @@
+# Dependencies / builds
+node_modules/
+.next/
+out/
+dist/
+build/
+tsconfig.tsbuildinfo
+*.log
+
+# Env & credentials
+.env
+.env.*
+!.env.example
+.vercel/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Local verification screenshots (root of repo only)
+/*.png
+
+# Playwright cache
+.cache/
