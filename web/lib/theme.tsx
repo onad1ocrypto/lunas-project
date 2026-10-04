@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lsGet, lsSet } from "./safeStorage";
 
 export type ThemeCode = "candy" | "midnight" | "matcha";
 
@@ -21,7 +22,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeCode>("candy");
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as ThemeCode | null;
+    const saved = lsGet(STORAGE_KEY) as ThemeCode | null;
     if (saved && THEMES.some((t) => t.code === saved)) setThemeState(saved);
   }, []);
 
@@ -31,7 +32,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((t: ThemeCode) => {
     setThemeState(t);
-    localStorage.setItem(STORAGE_KEY, t);
+    lsSet(STORAGE_KEY, t);
   }, []);
 
   const value = useMemo<Ctx>(() => ({ theme, setTheme }), [theme, setTheme]);

@@ -112,7 +112,11 @@ export default function ProfilePage() {
     }
   }, [welcomed, sessionReady, session.mode, me.name, t]);
 
-  const doSignOut = () => { signOut(); router.push("/"); };
+  const doSignOut = async () => {
+    await signOut();
+    router.push("/");
+    router.refresh();
+  };
 
   /* Signed in? Ask whether this account already has a published page. */
   useEffect(() => {
