@@ -9,6 +9,8 @@ import { ORDERS } from "@/lib/data";
 import {
   hostOf,
   locationOf,
+  maskEmail,
+  maskId,
   normalizeUrl,
   initialsOf,
   MAX_PORTFOLIO,
@@ -64,6 +66,8 @@ export default function ProfilePage() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [publication, setPublication] = useState<{ published: boolean; handle?: string } | null>(null);
+  /* Account identifiers are masked by default so a screen recording does not show them. */
+  const [revealIds, setRevealIds] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   /* One timer at a time: a previous message's timer must not cut the next one short
      (photo → save happens well inside the 2.6s window). */
@@ -210,11 +214,24 @@ export default function ProfilePage() {
           <b style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>
             {asPaypal ? t("me.id.pp") : t("me.id.guest")}
           </b>
-          <p className="tiny muted" style={{ fontWeight: 700 }}>{asPaypal ? t("me.id.ppBody", { email: pp?.email ?? "" }) : t("me.id.guestBody", { name: me.name, city: me.city })}</p>
-          {asPaypal && pp && <span className="mono tiny" style={{ opacity: .8 }}>{t("me.id.account")} {pp.payerId}</span>}
+          <p className="tiny muted" style={{ fontWeight: 700 }}>
+            {asPaypal
+              ? t("me.id.ppBody", { email: revealIds ? pp?.email ?? "" : maskEmail(pp?.email ?? "") })
+              : t("me.id.guestBody", { name: me.name, city: me.city || locationOf(me, lang) })}
+          </p>
+          {asPaypal && pp && (
+            <span className="mono tiny" style={{ opacity: .8 }}>
+              {t("me.id.account")} {revealIds ? pp.payerId : maskId(pp.payerId)}
+            </span>
+          )}
         </div>
         {asPaypal ? (
-          <button className="btn sm" onClick={doSignOut}><Icon name="x" size={15} /> {t("me.menu.signout")}</button>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <button className="btn sm" onClick={() => setRevealIds((v) => !v)} title={t("me.mask.hint")}>
+              <Icon name={revealIds ? "lock" : "eye"} size={15} /> {revealIds ? t("me.hide") : t("me.reveal")}
+            </button>
+            <button className="btn sm" onClick={doSignOut}><Icon name="x" size={15} /> {t("me.menu.signout")}</button>
+          </div>
         ) : (
           <Link className="btn ink sm" href="/signin"><Icon name="wallet" size={15} /> {t("me.menu.signin")}</Link>
         )}
@@ -520,7 +537,9 @@ export default function ProfilePage() {
           </div>
           <p className="tiny muted" style={{ fontWeight: 700 }}>{asPaypal ? t("me.paypal.bodyLive") : t("me.paypal.bodyGuest")}</p>
           {asPaypal && pp ? (
-            <span className="mono tiny" style={{ opacity: .85 }}>{pp.email} · {pp.payerId} · sandbox</span>
+            <span className="mono tiny" style={{ opacity: .85 }}>
+              {revealIds ? pp.email : maskEmail(pp.email)} · {revealIds ? pp.payerId : maskId(pp.payerId)} · sandbox
+            </span>
           ) : (
             <span className="mono tiny" style={{ opacity: .6 }}>sb-{me.handle}@personal.example</span>
           )}

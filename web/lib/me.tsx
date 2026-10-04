@@ -10,7 +10,7 @@ import {
 } from "./profile";
 
 /* Re-exported so existing imports from "@/lib/me" keep working. */
-export { countryName, hostOf, locationOf, MAX_PORTFOLIO, normalizeUrl, SOCIAL_KEYS } from "./profile";
+export { countryName, hostOf, locationOf, maskEmail, maskId, MAX_PORTFOLIO, normalizeUrl, SOCIAL_KEYS } from "./profile";
 export type { MePortfolioItem, MeProfile, MeSocials, SocialKey } from "./profile";
 
 export const ME_COLOR = "var(--peach-l)";
@@ -38,13 +38,25 @@ const PROFILES_KEY = "lunas.profiles";
 const keyOf = (id: string) => `${PROFILES_KEY}.${id}`;
 const identityOf = (s: Session) => (s.mode === "paypal" && s.paypal ? `pp.${s.paypal.payerId}` : "guest");
 
+/**
+ * Default public handle for a fresh sign-in. Prefer the person's *name* — a sandbox
+ * account's email local part ("sb-xmpdi53077531") would otherwise become a public URL
+ * and leak the account identifier.
+ */
+function handleFrom(name: string, email: string): string {
+  const slug = (v: string) => v.trim().toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/^-+|-+$/g, "");
+  const fromName = slug(name).slice(0, 32);
+  if (fromName) return fromName;
+  const local = (email.split("@")[0] || "").replace(/^sb-/, "").replace(/\d+$/, "");
+  return slug(local).slice(0, 32) || "me";
+}
+
 /** A PayPal sign-in fills what PayPal knows; everything else is for the user to complete. */
 export function profileFromPayPal(p: PayPalIdentity): MeProfile {
   const local = (p.email.split("@")[0] || "").trim();
-  const handle = local.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
   return {
     name: p.name?.trim() || local || "PayPal user",
-    handle: handle || "me",
+    handle: handleFrom(p.name || "", p.email),
     city: "",
     country: (p.country || "").slice(0, 2).toUpperCase(),
     bio: "",
