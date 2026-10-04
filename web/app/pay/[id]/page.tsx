@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { absorbTicketFromHash } from "@/lib/ticket-client";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { PayPalButtons, PayPalMark } from "@/components/PayPalButtons";
@@ -44,6 +45,7 @@ export default function CheckoutPage() {
   const [mode, setMode] = useState<string>("…");
 
   const load = useCallback(async () => {
+    absorbTicketFromHash(id); // a shared payment link carries its own signed snapshot
     const res = await api.getOrder(id);
     if (!res.ok) {
       setError(res.error ?? "Order not found");

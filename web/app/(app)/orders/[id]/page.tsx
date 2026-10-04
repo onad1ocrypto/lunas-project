@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getOrder, ORDERS, type Order, type ProductKind, type Status } from "@/lib/data";
 import { api } from "@/lib/api";
+import { payLinkWithTicket } from "@/lib/ticket-client";
 import { MoneyRail } from "@/components/MoneyRail";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
@@ -265,7 +266,7 @@ function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => v
               className="btn sm"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(`${window.location.origin}/pay/${order.id}`);
+                  await navigator.clipboard.writeText(payLinkWithTicket(`${window.location.origin}/pay/${order.id}`, order.id));
                 } catch {}
               }}
             >

@@ -107,7 +107,9 @@ dispute       ──▶ mediator → Payments v1 refund         ──▶  clien
 
 That exists because serverless instances share no memory — an order created a minute ago can be invisible to the next request, which is exactly the "order not found" a judge would otherwise hit mid-demo. With the ticket the flow survives cold starts with **no database to provision**, and it is safe: the payload is tamper-evident, the signing secret never leaves the server, and money still only moves through PayPal capture/payout/refund with real ids. (A deployment with a durable store just ignores the ticket — the store wins.)
 
-Known limits of that shortcut: a link opened in a *different* browser has no ticket (add Postgres/KV for true multi-device), and the platform balance is simulated until you plug in a place to hold escrow properly — see the roadmap.
+Payment links carry the ticket in the URL **fragment** (`/pay/LNS-1234#t=…`) — fragments are never sent to the server, so the ticket stays out of logs *and* the link works in any browser, including the client's phone.
+
+Known limits of that shortcut: the ticket is a snapshot (a multi-user deployment wants a real database — see the roadmap), and the escrow balance is simulated until you plug in a place to hold funds properly.
 
 ### Acceptance-criteria rule DSL
 
