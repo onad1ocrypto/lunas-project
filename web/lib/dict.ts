@@ -444,6 +444,23 @@ const en: Record<string, string> = {
   "me.hide": "Hide details",
   "me.mask.hint": "Account details are hidden so they don't show up in screen recordings.",
 
+  /* ---------- insights (AG Studio) ---------- */
+  "nav.insights": "Insights",
+  "ins.title": "Your money, in one place",
+  "ins.sub": "Every escrow order, payout and agent run — as a dashboard you can reshape yourself.",
+  "ins.kpi.escrow": "In escrow right now",
+  "ins.kpi.released": "Paid out to you",
+  "ins.kpi.days": "Avg. days to payout",
+  "ins.kpi.countries": "Client countries",
+  "ins.studio.t": "Dashboard",
+  "ins.studio.b": "Drag a field from the left to build a widget, or click a chart to cross-filter the rest. Your layout stays in this browser.",
+  "ins.data.t": "Where this data comes from",
+  "ins.data.b": "Orders come from Lunas; money events are the PayPal calls behind them (Orders v2 capture, Payouts v1 release, Payments v1 refund, fees); agent runs are the contract, verification and mediation calls.",
+  "ins.engine": "AI verified",
+  "ins.reset": "Reset layout",
+  "ins.loading": "Loading the dashboard…",
+  "ins.licensed": "AG Studio Pro (hackathon trial, evaluation only)",
+
 };
 
 const zh: Record<string, string> = {
@@ -889,6 +906,23 @@ const zh: Record<string, string> = {
   "me.hide": "隐藏详情",
   "me.mask.hint": "账户信息默认隐藏，避免出现在录屏中。",
 
+  /* ---------- 洞察（AG Studio） ---------- */
+  "nav.insights": "洞察",
+  "ins.title": "你的收入，一目了然",
+  "ins.sub": "每一笔托管订单、放款与智能体调用 — 变成一个你可以自由调整的仪表板。",
+  "ins.kpi.escrow": "当前托管金额",
+  "ins.kpi.released": "已放款给你",
+  "ins.kpi.days": "平均放款天数",
+  "ins.kpi.countries": "客户国家数",
+  "ins.studio.t": "仪表板",
+  "ins.studio.b": "从左侧拖动字段即可创建图表，点击图表可交叉筛选其余部件。布局保存在本浏览器中。",
+  "ins.data.t": "数据来自哪里",
+  "ins.data.b": "订单来自 Lunas；资金事件是背后的 PayPal 调用（Orders v2 收款、Payouts v1 放款、Payments v1 退款、手续费）；智能体调用包括合同、验证与调解。",
+  "ins.engine": "AI 已验证",
+  "ins.reset": "重置布局",
+  "ins.loading": "正在加载仪表板…",
+  "ins.licensed": "AG Studio Pro（黑客松试用，仅限评估）",
+
 };
 
 const id: Record<string, string> = {
@@ -1333,6 +1367,23 @@ const id: Record<string, string> = {
   "me.reveal": "Tampilkan detail",
   "me.hide": "Sembunyikan detail",
   "me.mask.hint": "Detail akun disembunyikan supaya tidak ikut terekam saat membuat video.",
+
+  /* ---------- insights (AG Studio) ---------- */
+  "nav.insights": "Insights",
+  "ins.title": "Uangmu, dalam satu tampilan",
+  "ins.sub": "Setiap order escrow, pencairan, dan pemanggilan agen — jadi dashboard yang bisa kamu atur sendiri.",
+  "ins.kpi.escrow": "Sedang di escrow",
+  "ins.kpi.released": "Sudah cair ke kamu",
+  "ins.kpi.days": "Rata-rata hari cair",
+  "ins.kpi.countries": "Negara klien",
+  "ins.studio.t": "Dashboard",
+  "ins.studio.b": "Tarik sebuah kolom dari panel kiri untuk membuat grafik, atau klik satu grafik untuk memfilter widget lainnya. Tata letaknya tersimpan di browser ini.",
+  "ins.data.t": "Dari mana datanya",
+  "ins.data.b": "Order diambil dari Lunas; money events adalah panggilan PayPal di baliknya (Orders v2 untuk masuk escrow, Payouts v1 untuk pencairan, Payments v1 untuk refund, plus biaya); agent runs adalah pemanggilan agen kontrak, verifikasi, dan mediasi.",
+  "ins.engine": "Terverifikasi AI",
+  "ins.reset": "Atur ulang tata letak",
+  "ins.loading": "Memuat dashboard…",
+  "ins.licensed": "AG Studio Pro (trial hackathon, hanya untuk evaluasi)",
 
 };
 

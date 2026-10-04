@@ -39,6 +39,7 @@ const P: Record<string, ReactNode> = {
   bot: <><rect x="4" y="8" width="16" height="12" rx="4" /><path d="M12 4v4M9 14h.01M15 14h.01" /></>,
   scale: <><path d="M12 4v16M8 20h8M12 6L5 8m7-2l7 2" /><path d="M5 8l-2.5 5.5a2.8 2.8 0 0 0 5 0z" /><path d="M19 8l-2.5 5.5a2.8 2.8 0 0 0 5 0z" /></>,
   refund: <><path d="M4 10h12a4.5 4.5 0 0 1 0 9H9" /><path d="M7.5 6.5L4 10l3.5 3.5" /><path d="M13 15.5h.01" /></>,
+  chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
 };
 
 export type IconName = keyof typeof P;
