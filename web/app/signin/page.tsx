@@ -108,7 +108,7 @@ export default function SignInPage() {
             <button
               className="btn pink lg"
               style={{ marginTop: 20, width: "100%", justifyContent: "center" }}
-              onClick={() => { signInAsGuest(); router.push("/dashboard"); }}
+              onClick={async () => { await signInAsGuest(); router.push("/dashboard"); router.refresh(); }}
             >
               {t("signin.guest.cta")} <Icon name="right" size={18} />
             </button>

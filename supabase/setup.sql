@@ -21,3 +21,11 @@ create table if not exists public.profiles (
 -- anon/authenticated clients get nothing, even with the publishable key.
 alter table public.profiles enable row level security;
 revoke all on public.profiles from anon, authenticated;
+
+-- =========================================================
+-- Requests from a client's public page (/to/<handle>)
+-- =========================================================
+-- Nothing to create: /api/requests keeps one JSON object per request in the
+-- Supabase **Storage** bucket "requests" (made on first write), using the same
+-- two env vars as the profile store. Schema-free on purpose — a fresh project
+-- needs no migration. Move these into a table later if you want SQL on them.

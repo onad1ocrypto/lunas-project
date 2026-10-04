@@ -73,7 +73,12 @@ export function ProfileMenu() {
   const pp = session.paypal;
   /* Sign out now actually signs out: the PayPal session cookie is dropped, the saved
      demo profile is cleared and the visitor is returned to the landing page. */
-  const handleSignOut = () => { setOpen(false); signOut(); router.push("/"); };
+  const handleSignOut = async () => {
+    setOpen(false);
+    await signOut(); /* wait for the cookie to be dropped before the page changes */
+    router.push("/");
+    router.refresh();
+  };
   const close = () => setOpen(false);
   return (
     <span className="top-avatar" style={{ position: "relative", display: "inline-block" }}>
@@ -195,6 +200,7 @@ export function Avatar({ p, size = 40, photo }: { p: Pick<Person, "initials" | "
   );
 }
 export function Country({ code }: { code: string }) {
+  if (!code) return null; // a client who never said where they are gets no pill
   return (
     <span style={{ fontSize: 10.5, fontWeight: 900, padding: "1px 6px", borderRadius: 6, border: "1.5px solid var(--ink)", background: "var(--paper)" }}>
       {code}

@@ -9,6 +9,7 @@ import { hostOf, initialsOf, locationOf, ME_COLOR, SOCIAL_KEYS, useMe, type MePr
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter } from "@/components/DraftContract";
+import { sendRequest } from "@/lib/requests";
 import { Avatar, Confetti, Country, LangSwitch, Logo, Product, ThemeSwitch } from "@/components/ui";
 
 
@@ -40,10 +41,35 @@ export default function PublicOrderPage() {
   const [brief, setBrief] = useState("");
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [budget, setBudget] = useState<number | "">("");
+  const [title, setTitle] = useState("");
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [ref, setRef] = useState("");
   const [fire, setFire] = useState(0);
 
   const ready = name.trim().length > 1 && /\S+@\S+/.test(email) && criteria.length > 0 && Number(budget) > 0;
+
+  /* The request really leaves the page: it is stored server-side so it lands in
+     the freelancer's inbox even from the client's own phone. If the server has
+     no storage configured the browser keeps a copy instead, and the inbox reads
+     that — the demo keeps working, it just stops being cross-device. */
+  const send = async () => {
+    if (!ready || sending) return;
+    setSending(true);
+    const { id } = await sendRequest({
+      handle,
+      name: name.trim(),
+      email: email.trim(),
+      brief: brief.trim(),
+      title,
+      budget: Number(budget),
+      criteria,
+    });
+    setRef(id);
+    setSending(false);
+    setSent(true);
+    setFire((f) => f + 1);
+  };
   const TAG_COLORS = ["var(--pink-l)", "var(--sky-l)", "var(--lemon-l)", "var(--mint-l)"];
   const tagList = shown.tags.length ? shown.tags : [t("pub.skill1"), t("pub.skill2"), t("pub.skill3"), t("pub.skill4")];
   const skills = tagList.slice(0, 6).map((s, i) => ({ s, c: TAG_COLORS[i % TAG_COLORS.length] }));
@@ -153,7 +179,7 @@ export default function PublicOrderPage() {
 
               <div style={{ marginTop: 16 }}>
                 <BriefDrafter brief={brief} setBrief={setBrief} example={t("ex.fromClient", { name: firstName })} placeholder={t("pub.briefPh")}
-                  onDrafted={(r) => { setCriteria(r.criteria); if (r.amount) setBudget(r.amount); if (!name) { setName("James Miller"); setEmail("james@shop.com"); } }} />
+                  onDrafted={(r) => { setCriteria(r.criteria); if (r.title) setTitle(r.title); if (r.amount) setBudget(r.amount); if (!name) { setName("James Miller"); setEmail("james@shop.com"); } }} />
               </div>
 
               <div className="pub-form" style={{ marginTop: 16, alignItems: "end" }}>
@@ -161,8 +187,8 @@ export default function PublicOrderPage() {
                   <label htmlFor="b">{t("pub.budget")}</label>
                   <input id="b" type="number" min={1} className="input" value={budget} onChange={(e) => setBudget(e.target.value ? Number(e.target.value) : "")} placeholder="150" />
                 </div>
-                <button className="btn pink lg" disabled={!ready} onClick={() => { setSent(true); setFire((f) => f + 1); }}>
-                  <Icon name="send" size={18} /> {t("pub.send")}
+                <button className="btn pink lg" disabled={!ready || sending} onClick={send}>
+                  <Icon name="send" size={18} /> {sending ? t("pub.sending") : t("pub.send")}
                 </button>
               </div>
               <p className="tiny muted" style={{ marginTop: 10 }}>{t("pub.noPayYet", { name: firstName })}</p>
@@ -172,6 +198,7 @@ export default function PublicOrderPage() {
               <Capi size={130} mood="love" motion="jump" />
               <h2 style={{ fontSize: 32 }}>{t("pub.sentT")}</h2>
               <p className="muted" style={{ maxWidth: 440 }}>{t("pub.sentB", { name: firstName, email })}</p>
+              {ref && <code className="tiny" style={{ background: "var(--paper)", border: "2px dashed var(--ink)", borderRadius: 10, padding: "4px 10px", fontWeight: 800 }}>{t("pub.ref", { id: ref })}</code>}
               <div className="pub-steps">
                 {[t("pub.next1", { name: firstName }), t("pub.next2", { amount: money(Number(budget) || 0) }), t("pub.next3")].map((s, i) => (
                   <div key={i} className="row" style={{ gap: 10, textAlign: "left" }}>

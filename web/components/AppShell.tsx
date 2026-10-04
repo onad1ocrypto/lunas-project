@@ -2,19 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 import { NEEDS_ME, ORDERS } from "@/lib/data";
 import { CapiPose, LangSwitch, Logo, ProfileMenu, ThemeSwitch } from "./ui";
 import { Icon } from "./Icon";
+import { listIncoming } from "@/lib/requests";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const { me } = useMe();
   const path = usePathname();
-  const incoming = ORDERS.filter((o) => o.direction === "from_client" && o.status === "request").length;
-  const todo = ORDERS.filter((o) => NEEDS_ME.includes(o.status)).length;
+  /* Requests sent from a client's public page arrive here too — the badge is not
+     a decoration, it is the number of people waiting for an answer. */
+  const [arrived, setArrived] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    listIncoming(me.handle).then((rs) => {
+      if (alive) setArrived(rs.filter((r) => r.status === "new").length);
+    });
+    return () => { alive = false; };
+  }, [me.handle]);
+  const incoming = ORDERS.filter((o) => o.direction === "from_client" && o.status === "request").length + arrived;
+  const todo = ORDERS.filter((o) => NEEDS_ME.includes(o.status)).length + arrived;
 
   const nav = [
     { href: "/dashboard", icon: "home", label: t("nav.dashboard"), color: "var(--lemon)" },

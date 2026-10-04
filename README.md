@@ -37,6 +37,15 @@ Connected that way, the profile becomes the user's own: name, handle, city, bio 
 
 4. You land on your own profile, then walk the money flow on any order: open **Lunas Orders → LNS-0142 → Approve & pay**, and pay with that same tester account.
 
+#### The other direction: a client hiring you
+
+The dashboard is the freelancer's side; clients never sign in, they get a link.
+Open **My order page** in the sidebar (or `/to/<handle>`) — that is the page you
+hand to a client. Fill it in, press *Draft contract with AI*, then *Send request*.
+The request lands in **Orders → From clients** wearing a *New request* ribbon;
+open it and press **Accept** to move it to the PayPal step. Sent from another
+device it still arrives — requests are stored server-side, not in a tab.
+
 > This is a **sandbox** account created in the PayPal Developer Dashboard (*Testing Tools → Sandbox Accounts*). If it ever runs out of test balance, a new one takes 10 seconds to create. Sign-in needs **Log in with PayPal** enabled for the app in the dashboard (Return URL must match `https://lunas-project.vercel.app/api/auth/paypal/callback` exactly); if it is not enabled, the button says so and guest mode still gives full access.
 
 ---

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lsGet, lsRemove, lsSet } from "./safeStorage";
 import {
   ME_PROFILE_FALLBACK,
   sanitizeProfile,
@@ -86,25 +87,25 @@ function readProfile(session: Session): MeProfile {
   if (typeof window === "undefined") return fallback;
   try {
     const key = keyOf(identityOf(session));
-    const raw = localStorage.getItem(key);
+    const raw = lsGet(key);
     if (raw) {
       const stored = parseStored(raw, fallback);
       /* A browser that saved the *old* demo default (e.g. SASAM / Wonogiri) keeps showing
          it otherwise — the persona changed, so drop it and use the current one. */
       if (!isStaleDefault(stored)) return stored;
-      localStorage.removeItem(key);
+      lsRemove(key);
       return fallback;
     }
     /* one-time migration from the single-profile layout used before sign-in existed.
        Stale *default* personas (Sari Wulandari / Yogyakarta, SASAM / Wonogiri) are demo
        data, not user edits, so they are dropped in favour of the current persona. */
     if (session.mode === "guest") {
-      const legacy = localStorage.getItem(LEGACY_KEY);
+      const legacy = lsGet(LEGACY_KEY);
       if (legacy) {
         const migrated = parseStored(legacy, fallback);
-        localStorage.removeItem(LEGACY_KEY);
+        lsRemove(LEGACY_KEY);
         if (migrated && !isStaleDefault(migrated)) {
-          localStorage.setItem(key, JSON.stringify(migrated));
+          lsSet(key, JSON.stringify(migrated));
           return migrated;
         }
       }
@@ -121,13 +122,27 @@ interface Ctx {
   session: Session;
   sessionReady: boolean;
   signInWithPayPal: () => void;
-  signInAsGuest: () => void;
-  signOut: () => void;
+  signInAsGuest: () => Promise<void>;
+  signOut: () => Promise<void>;
   justSignedOut: boolean;
   clearJustSignedOut: () => void;
 }
 
 const MeCtx = createContext<Ctx | null>(null);
+
+/* Drop the server-side session cookie and wait for the answer. If the request fails or
+   drags on we carry on anyway: the visitor asked to leave, so the UI returns to guest and
+   the next load re-checks the cookie. */
+async function endServerSession(): Promise<void> {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4000);
+    await fetch("/api/auth/signout", { method: "POST", cache: "no-store", signal: ctl.signal });
+    clearTimeout(t);
+  } catch {
+    /* offline, aborted, blocked by an embedded frame — local state still resets */
+  }
+}
 
 export function MeProvider({ children }: { children: ReactNode }) {
   const [me, setMeState] = useState<MeProfile>(ME_DEFAULT);
@@ -160,7 +175,7 @@ export function MeProvider({ children }: { children: ReactNode }) {
     (p: MeProfile) => {
       setMeState(p);
       try {
-        localStorage.setItem(keyOf(identityOf(session)), JSON.stringify(p));
+        lsSet(keyOf(identityOf(session)), JSON.stringify(p));
       } catch {
         /* storage unavailable (private mode) -> in-memory only */
       }
@@ -172,12 +187,15 @@ export function MeProvider({ children }: { children: ReactNode }) {
     window.location.href = "/api/auth/paypal/start";
   }, []);
 
-  /* Back to guest mode: forget the server session and this device's demo profile. */
-  const signOut = useCallback(() => {
-    void fetch("/api/auth/signout", { method: "POST", cache: "no-store" }).catch(() => {});
+  /* Back to guest mode: forget the server session and this device's demo profile.
+     The server call is awaited (with a short leash) so the cookie is really gone before
+     the caller navigates — firing and forgetting lost the race against the reload and
+     the visitor came back signed in. */
+  const signOut = useCallback(async () => {
+    await endServerSession();
     try {
-      localStorage.removeItem(keyOf("guest"));
-      localStorage.removeItem(LEGACY_KEY);
+      lsRemove(keyOf("guest"));
+      lsRemove(LEGACY_KEY);
     } catch {
       /* nothing to clear */
     }
@@ -187,8 +205,8 @@ export function MeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* "Continue as guest" from the sign-in page: same as sign-out, without the farewell toast. */
-  const signInAsGuest = useCallback(() => {
-    void fetch("/api/auth/signout", { method: "POST", cache: "no-store" }).catch(() => {});
+  const signInAsGuest = useCallback(async () => {
+    await endServerSession();
     setSession({ mode: "guest" });
     setMeState(readProfile({ mode: "guest" }));
   }, []);

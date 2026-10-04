@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lsGet, lsSet } from "./safeStorage";
 import { dict, type Lang } from "./dict";
 
 export const LANGS: { code: Lang; label: string; short: string; htmlLang: string; locale: string }[] = [
@@ -25,7 +26,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>("en"); // English is the primary language
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as Lang | null;
+    const saved = lsGet(STORAGE_KEY) as Lang | null;
     if (saved && saved in dict) setLangState(saved);
   }, []);
 
@@ -35,7 +36,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
-    localStorage.setItem(STORAGE_KEY, l);
+    lsSet(STORAGE_KEY, l);
   }, []);
 
   const value = useMemo<Ctx>(() => {

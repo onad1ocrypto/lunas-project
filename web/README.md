@@ -19,15 +19,35 @@ Works with **no credentials**: PayPal routes answer `503 { enabled: false }` and
 |---|---|
 | `/` | Landing page (hero, how it works, "try the stamp" demo) |
 | `/dashboard` | Freelancer home: stats, orders needing attention, earnings, activity |
-| `/orders?tab=from_client` | **Orders from clients** (incoming requests) |
+| `/orders?tab=from_client` | **Orders from clients** — incoming requests, including the ones that really arrived from a client's public page |
 | `/orders?tab=to_client` | **Orders to clients** (orders you sent) |
 | `/orders/new` | 4-step wizard to send an order to a client (AI drafts the contract) |
 | `/orders/[id]` | Order detail with live flow: accept → pay → deliver → AI check → review → LUNAS stamp |
-| `/to/[handle]` | Public order page clients use to send a request (e.g. `/to/sasam`) |
+| `/to/[handle]` | Public order page clients use to send a request (e.g. `/to/sasam`); *Send request* stores it server-side |
 | `/signin` | Two ways in: **guest mode** (shared SASAM demo profile) or **Log in with PayPal** (sandbox) |
 | `/to/[handle]` (published) | If that handle was published, the page is served from Supabase — the visitor sees the real profile |
 | `/insights` | Self-serve dashboard (AG Studio): orders, PayPal money events and agent runs. Drag fields to build widgets, cross-filter, reshape — the layout is part of the report state. |
 | `/profile` | Your identity: photo upload, social links, portfolio list (all editable, per identity) |
+
+## How a client's request reaches you
+
+The dashboard is the freelancer's side only — clients never sign in, they get a link.
+`My order page` (`/to/<handle>`) is that link:
+
+1. the client describes the job; the Contract Agent drafts the criteria both sides see
+   (the same `POST /api/agent/draft` the send-order wizard uses);
+2. pressing **Send request** really sends it: `POST /api/requests` stores one
+   `<REQ-id>.json` in a Supabase **Storage** bucket (`requests`, created on first
+   write) — so a client on their own phone lands in the freelancer's inbox, not only
+   in the tab they happened to have open;
+3. it shows up in **Orders → From clients** with a *New request* ribbon, the same card
+   and the same flow as every other order;
+4. opening it shows the client's brief and the drafted criteria; **Accept** moves it to
+   *Waiting for the client to pay*, and the PayPal step takes over from there.
+
+If the server has no storage configured the browser keeps the request in
+`localStorage` instead and the inbox reads that — the demo keeps working, it just stops
+being cross-device. No table needed: the pipe is storage-first, schema-free.
 
 ## API
 
@@ -36,6 +56,10 @@ Works with **no credentials**: PayPal routes answer `503 { enabled: false }` and
 | `POST /api/agent/draft` | Contract Agent — brief → title, amount, machine-checkable criteria |
 | `POST /api/agent/verify` | Verification Agent — criteria + delivery → per-criterion verdicts |
 | `POST /api/agent/mediate` | Mediator — dispute reasoning + recommended resolution |
+| `POST /api/requests` | A client's request from `/to/<handle>` → stored, returns the `REQ-` id |
+| `GET /api/requests?handle=` | The freelancer's inbox: every request sent to that handle |
+| `GET /api/requests?id=` | Open a single request by id |
+| `PATCH /api/requests` | Accept / decline a request |
 | `POST /api/paypal/create-order` | Orders v2 — escrow hold (idempotent per click via nonce) |
 | `POST /api/paypal/capture-order` | Capture on client approval |
 | `POST /api/paypal/payout` | Payouts v1 — release to the freelancer |

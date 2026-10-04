@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
 import { getOrder, ORDERS, type Criterion, type Order, type Status } from "@/lib/data";
+import { loadIncomingById, myOrder, requestAsOrder, saveMyOrder, setRequestStatus } from "@/lib/requests";
 import { MoneyRail } from "@/components/MoneyRail";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
@@ -29,10 +30,27 @@ const TIMELINE: Status[][] = [["request"], ["awaiting_payment"], ["in_escrow"], 
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
-  const order = getOrder(id) ?? ORDERS[0];
+  /* A REQ- id is a request a client actually sent from their page — it is not in
+     the seeded list, so it is resolved from this browser (accepted orders) or
+     from the server. Everything below then works unchanged. */
+  const known = getOrder(id);
+  const isLive = !known && /^REQ-/i.test(String(id));
+  const [order, setOrder] = useState<Order>(known ?? ORDERS[0]);
+  useEffect(() => {
+    if (!isLive) return;
+    let alive = true;
+    (async () => {
+      const mine = myOrder(id);
+      if (mine) { if (alive) setOrder(mine); return; }
+      const r = await loadIncomingById(String(id).toUpperCase());
+      if (alive && r) setOrder(requestAsOrder(r));
+    })();
+    return () => { alive = false; };
+  }, [id, isLive]);
   const { t, money, date } = useI18n();
   const { me } = useMe();
   const [status, setStatus] = useState<Status>(order.status);
+  useEffect(() => { setStatus(order.status); }, [order]);
   const [logs, setLogs] = useState<Log[]>(() => seedLogs(order));
   const [fire, setFire] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -89,7 +107,15 @@ export default function OrderDetail() {
         <div className="col" style={{ gap: 20 }}>
           {status === "request" && (
             <RequestPanel order={order}
-              onAccept={() => { setStatus("awaiting_payment"); log({ who: "contract", msg: `accepted by ${me.name.split(" ")[0]}`, res: "payment link sent to client", kind: "hook" }); flash(t("toast.accepted")); }}
+              onAccept={() => {
+                setStatus("awaiting_payment");
+                if (isLive) {
+                  void setRequestStatus(String(id).toUpperCase(), "accepted");
+                  saveMyOrder({ ...order, status: "awaiting_payment" });
+                }
+                log({ who: "contract", msg: `accepted by ${me.name.split(" ")[0]}`, res: "payment link sent to client", kind: "hook" });
+                flash(t("toast.accepted"));
+              }}
               onDecline={() => { setStatus("declined"); log({ who: "contract", msg: "declined", kind: "err" }); }} />
           )}
           {status === "awaiting_payment" && (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
@@ -9,6 +9,7 @@ import { NEEDS_ME, ORDERS, type Direction, type Order, type Status } from "@/lib
 import { Icon } from "@/components/Icon";
 import { Avatar, Country, Empty, Product, StatusBadge } from "@/components/ui";
 import { Capi } from "@/components/Capi";
+import { listIncoming, requestAsOrder } from "@/lib/requests";
 
 type Filter = "all" | "action" | "escrow" | "review" | "paid";
 const FILTERS: Record<Filter, (s: Status) => boolean> = {
@@ -27,9 +28,21 @@ function OrdersInner() {
   const tab: Direction = params.get("tab") === "to_client" ? "to_client" : "from_client";
   const [filter, setFilter] = useState<Filter>("all");
 
-  const list = useMemo(() => ORDERS.filter((o) => o.direction === tab && FILTERS[filter](o.status)), [tab, filter]);
-  const count = (d: Direction) => ORDERS.filter((o) => o.direction === d).length;
-  const newReq = ORDERS.filter((o) => o.direction === "from_client" && o.status === "request").length;
+  /* Requests that really arrived from a client's public page sit on top of the
+     seeded demo orders — same card, same flow, one "New" ribbon. */
+  const [live, setLive] = useState<Order[]>([]);
+  useEffect(() => {
+    let alive = true;
+    listIncoming(me.handle).then((rs) => {
+      if (alive) setLive(rs.filter((r) => r.status === "new").map(requestAsOrder));
+    });
+    return () => { alive = false; };
+  }, [me.handle]);
+
+  const allOrders = useMemo(() => [...live, ...ORDERS], [live]);
+  const list = useMemo(() => allOrders.filter((o) => o.direction === tab && FILTERS[filter](o.status)), [allOrders, tab, filter]);
+  const count = (d: Direction) => allOrders.filter((o) => o.direction === d).length;
+  const newReq = allOrders.filter((o) => o.direction === "from_client" && o.status === "request").length;
 
   const tabs: { d: Direction; icon: string; label: string; sub: string; color: string }[] = [
     { d: "from_client", icon: "inbox", label: t("orders.tab.from"), sub: t("orders.tab.fromSub"), color: "var(--pink)" },
@@ -106,6 +119,7 @@ function OrdersInner() {
         .otab-count{display:inline-grid;place-items:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;background:var(--ink);color:var(--cream);font-size:14px;vertical-align:3px;margin-left:4px}
         .otab-new{position:absolute;top:-12px;right:14px;background:var(--red);color:#fff;border:2px solid var(--ink);border-radius:999px;padding:2px 10px;font-weight:900;font-size:12px;transform:rotate(4deg);animation:popin .5s var(--spring)}
         .ogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:20px}
+        .ocard-new{position:absolute;top:-10px;left:14px;background:var(--red);color:#fff;border:2px solid var(--ink);border-radius:999px;padding:1px 9px;font-weight:900;font-size:11.5px;transform:rotate(-3deg)}
         .share-strip{display:flex;align-items:center;gap:16px;padding:16px 20px;background:var(--mint-l);flex-wrap:wrap}
         .share-link{background:var(--paper);border:2px dashed var(--ink);border-radius:10px;padding:8px 12px;font-weight:800}
         @media (max-width:700px){.otabs{grid-template-columns:1fr}}
@@ -125,6 +139,7 @@ function OrderCard({ o, tilt }: { o: Order; tilt: number }) {
     <Link href={`/orders/${o.id}`} className="card lift ocard" style={{ ["--tilt" as string]: `${tilt}deg` }}>
       <div className="ocard-top" style={{ background: o.accent }}>
         <span className="mono tiny" style={{ fontWeight: 800, color: "#231942" }}>{o.id}</span>
+        {o.id.startsWith("REQ-") && <span className="ocard-new">{t("orders.newChip")}</span>}
         <span className="ocard-thumb"><Product kind={o.product} /></span>
       </div>
       <div style={{ padding: "16px 18px 18px" }}>
