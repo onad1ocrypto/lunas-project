@@ -41,7 +41,7 @@ export interface Order {
 
 export type ProductKind = "bottle" | "mug" | "shoe" | "bag" | "candle" | "watch" | "plant" | "cap";
 
-export const ME: Person = { name: "Sari Wulandari", handle: "sari", initials: "SW", city: "Yogyakarta", country: "ID", color: "var(--peach-l)" };
+export const ME: Person = { name: "SASAM", handle: "sasam", initials: "S", city: "Wonogiri", country: "ID", color: "var(--peach-l)" };
 
 export const ORDERS: Order[] = [
   {

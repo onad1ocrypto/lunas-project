@@ -8,8 +8,36 @@ Live: **https://lunas-project.vercel.app**
 
 ### The story it tells
 
-Sari, a product-photo editor in Yogyakarta, gets a brief from James in Austin: _20 photos, white background, 2000px, JPG, $150._
-Lunas drafts the contract → James funds the escrow with PayPal → Sari delivers → the Verification Agent checks the criteria → one file fails → revision → re-upload passes → review window → payout via PayPal → **LUNAS!**
+SASAM, a product-photo editor in Wonogiri, Indonesia, gets a brief from James in Austin: _20 photos, white background, 2000px, JPG, $150._
+Lunas drafts the contract → James funds the escrow with PayPal → SASAM delivers → the Verification Agent checks the criteria → one file fails → revision → re-upload passes → review window → payout via PayPal → **LUNAS!**
+
+---
+
+## Sign in: guest mode or a PayPal sandbox account
+
+Lunas keeps no passwords of its own. `/signin` offers two ways in:
+
+| Mode | For | What happens |
+|---|---|---|
+| **Guest** | anyone evaluating the project | The shared demo profile — **SASAM**, Wonogiri, Indonesia — loads from the browser. Every flow works: send an order, escrow, delivery, verification, release. Edits stay in that browser. |
+| **Log in with PayPal** | a visitor with a PayPal *sandbox* account | Log in with PayPal (PayPal Identity API / OpenID Connect). Lunas receives only the standard claims — name, email, PayPal account ID — and keeps them in a signed HttpOnly cookie. No password ever reaches the app, and no PayPal credential is stored anywhere. |
+
+Connected that way, the profile becomes the user's own: name, handle, city, bio and skills are editable, and the PayPal account ID doubles as the payout receiver for that profile.
+
+### Try it as a judge (2 minutes)
+
+1. Open **https://lunas-project.vercel.app/signin**
+2. **Guest mode** needs nothing — click *Open the app as a guest*.
+3. For the PayPal path, use the sandbox tester account below (sandbox only: fake money, no real account, no funding source):
+
+   ```
+   email:    <sandbox tester email — filled in before submission>
+   password: <sandbox tester password — filled in before submission>
+   ```
+
+4. You land on your own profile, then walk the money flow on any order: open **Lunas Orders → LNS-0142 → Approve & pay**, and pay with that same tester account.
+
+> This is a **sandbox** account created in the PayPal Developer Dashboard (*Testing Tools → Sandbox Accounts*). If it ever runs out of test balance, a new one takes 10 seconds to create. Sign-in needs **Log in with PayPal** enabled for the app in the dashboard (Return URL must match `https://lunas-project.vercel.app/api/auth/paypal/callback` exactly); if it is not enabled, the button says so and guest mode still gives full access.
 
 ---
 
@@ -43,6 +71,8 @@ PAYPAL_WEBHOOK_ID                         # enables webhook signature verificati
 PAYPAL_LIVE=1                             # switch from sandbox to live
 LLM_API_KEY                               # Contract / Verification / Mediator agents
 LLM_BASE_URL / LLM_MODEL                  # any OpenAI-compatible gateway
+AUTH_SECRET                               # signs the session cookie (falls back to PAYPAL_CLIENT_SECRET)
+APP_ORIGIN                                # optional: public origin used for the OAuth return URL
 ```
 
 ## Deploy
@@ -59,6 +89,8 @@ The app lives in `web/`, so the Vercel project must have **Root Directory = `web
 ## How the money moves
 
 ```
+sign in       ──▶ GET  /api/auth/paypal/start → PayPal consent screen
+              ──▶ GET  /api/auth/paypal/callback → Identity API userinfo → signed session cookie
 client pays   ──▶ POST /api/paypal/create-order   (Orders v2, intent CAPTURE, idempotent per click)
               ──▶ POST /api/paypal/capture-order  (funds captured into escrow)
 work delivered ──▶ POST /api/agent/verify          (per-criterion verdicts)
@@ -86,6 +118,7 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 ## Status & roadmap
 
 - [x] Trilingual UI (EN / 中文 / ID), three themes, order flows, public client page
+- [x] Two ways in: guest mode (SASAM) and **Log in with PayPal** (Identity API) sessions, per-account profiles
 - [x] PayPal REST integration: Orders v2 create + capture, Payouts v1 release, Payments v1 refund, webhook signature verification
 - [x] Contract / Verification / Mediator agents with LLM + local fallback
 - [ ] Durable storage for orders and the webhook buffer (currently in-memory demo data)

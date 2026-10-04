@@ -68,10 +68,13 @@ export function ProfileMenu() {
   const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const { me, signOut } = useMe();
-  /* Sign out now actually signs out: the saved demo profile is dropped and the visitor
-     is returned to the landing page, which shows the "signed out" confirmation. */
+  const { me, signOut, session } = useMe();
+  const asPaypal = session.mode === "paypal";
+  const pp = session.paypal;
+  /* Sign out now actually signs out: the PayPal session cookie is dropped, the saved
+     demo profile is cleared and the visitor is returned to the landing page. */
   const handleSignOut = () => { setOpen(false); signOut(); router.push("/"); };
+  const close = () => setOpen(false);
   return (
     <span className="top-avatar" style={{ position: "relative", display: "inline-block" }}>
       <button
@@ -91,14 +94,30 @@ export function ProfileMenu() {
           >
             <div className="row" style={{ gap: 10, padding: "8px 10px 12px", borderBottom: "2px dashed var(--ink-3)", marginBottom: 4 }}>
               <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={40} />
-              <div className="col" style={{ gap: 2 }}>
+              <div className="col" style={{ gap: 2, minWidth: 0 }}>
                 <b style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>{me.name}</b>
-                <span className="tiny muted">@{me.handle} · {me.city}</span>
+                <span className="tiny muted" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  @{me.handle}{me.city ? ` · ${me.city}` : ""}
+                </span>
+                {asPaypal && pp && (
+                  <span className="tiny" style={{ color: "#0E7A4D", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {t("me.signed.pp")} · {pp.email}
+                  </span>
+                )}
               </div>
             </div>
             <Link className="mi" href="/profile" onClick={() => setOpen(false)}><Icon name="user" size={16} /> {t("me.menu.profile")}</Link>
             <Link className="mi" href={`/to/${me.handle}`} onClick={() => setOpen(false)}><Icon name="link" size={16} /> {t("me.menu.public")}</Link>
-            <Link className="mi" href="/profile#paypal" onClick={() => setOpen(false)}><Icon name="wallet" size={16} /> {t("me.menu.paypal")}</Link>
+            <Link className="mi" href="/profile#paypal" onClick={close}><Icon name="wallet" size={16} /> {t("me.menu.paypal")}</Link>
+            {asPaypal ? (
+              <Link className="mi" href="/signin" onClick={close} style={{ color: "#0E7A4D" }}>
+                <Icon name="shield" size={16} /> {t("me.menu.connected")}
+              </Link>
+            ) : (
+              <Link className="mi" href="/signin" onClick={close} style={{ color: "#2C6BD1" }}>
+                <Icon name="wallet" size={16} /> {t("me.menu.signin")}
+              </Link>
+            )}
             <button className="mi" style={{ color: "var(--red)" }} onClick={handleSignOut}><Icon name="x" size={16} /> {t("me.menu.signout")}</button>
           </div>
         </>

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LANGS, useI18n } from "@/lib/i18n";
 import { THEMES, useTheme } from "@/lib/theme";
 import { ORDERS } from "@/lib/data";
@@ -11,11 +13,26 @@ import { Avatar, Country, Kicker, Toast } from "@/components/ui";
 export default function ProfilePage() {
   const { t, money, lang, setLang } = useI18n();
   const { theme, setTheme } = useTheme();
-  const { me, setMe } = useMe();
+  const router = useRouter();
+  const { me, setMe, session, sessionReady, signOut } = useMe();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<MeProfile>(me);
   const [toast, setToast] = useState("");
+  const [welcomed, setWelcomed] = useState(false);
   const ping = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2600); };
+  const asPaypal = session.mode === "paypal";
+  const pp = session.paypal;
+
+  /* Landing here right after the PayPal round trip -> greet the user by name. */
+  useEffect(() => {
+    if (welcomed) return;
+    if (sessionReady && session.mode === "paypal" && new URLSearchParams(window.location.search).get("welcome") === "1") {
+      setWelcomed(true);
+      ping(t("me.toast.welcome", { name: me.name }));
+    }
+  }, [welcomed, sessionReady, session.mode, me.name, t]);
+
+  const doSignOut = () => { signOut(); router.push("/"); };
 
   const paid = ORDERS.filter((o) => o.status === "paid");
   const earned = paid.reduce((s, o) => s + o.amount, 0) + 3180; // mock lifetime total
@@ -49,6 +66,25 @@ export default function ProfilePage() {
         <p className="muted" style={{ marginTop: 6, fontWeight: 700 }}>{t("me.sub")}</p>
       </div>
 
+      {/* who am I right now: guest persona or a PayPal sandbox account */}
+      <div className="card pad row wrap" style={{ gap: 14, background: asPaypal ? "var(--mint-l)" : "var(--lav-l)" }}>
+        <span style={{ width: 44, height: 44, flex: "none", borderRadius: 14, border: "2.5px solid var(--ink)", background: "var(--paper)", display: "grid", placeItems: "center", boxShadow: "3px 3px 0 var(--ink)" }}>
+          <Icon name={asPaypal ? "shield" : "user"} size={20} />
+        </span>
+        <div className="col grow" style={{ gap: 4, minWidth: 240 }}>
+          <b style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>
+            {asPaypal ? t("me.id.pp") : t("me.id.guest")}
+          </b>
+          <p className="tiny muted" style={{ fontWeight: 700 }}>{asPaypal ? t("me.id.ppBody", { email: pp?.email ?? "" }) : t("me.id.guestBody", { name: me.name, city: me.city })}</p>
+          {asPaypal && pp && <span className="mono tiny" style={{ opacity: .8 }}>{t("me.id.account")} {pp.payerId}</span>}
+        </div>
+        {asPaypal ? (
+          <button className="btn sm" onClick={doSignOut}><Icon name="x" size={15} /> {t("me.menu.signout")}</button>
+        ) : (
+          <Link className="btn ink sm" href="/signin"><Icon name="wallet" size={15} /> {t("me.menu.signin")}</Link>
+        )}
+      </div>
+
       {/* header card */}
       <div className="card" style={{ overflow: "hidden" }}>
         <div
@@ -68,8 +104,8 @@ export default function ProfilePage() {
             </div>
             <div className="row wrap muted" style={{ gap: 8, fontWeight: 700 }}>
               <span>@{me.handle}</span>
-              <Country code={me.country} />
-              <span>· {me.city}</span>
+              {me.country ? <Country code={me.country} /> : null}
+              {me.city ? <span>· {me.city}</span> : <span className="muted">{t("me.id.fillCity")}</span>}
             </div>
             <span className="tiny muted">{t("me.since")} · {t("me.langs")}</span>
           </div>
@@ -198,15 +234,23 @@ export default function ProfilePage() {
         <div className="col grow" style={{ gap: 4, minWidth: 220 }}>
           <div className="row wrap" style={{ gap: 10 }}>
             <b style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>{t("me.paypal.title")}</b>
-            <span className="badge" style={{ background: "var(--mint-l)", color: "var(--green)", borderColor: "currentColor" }}>
-              <span className="dot" /> <span style={{ color: "var(--ink)" }}>{t("me.paypal.connected")}</span>
+            <span className="badge" style={{ background: asPaypal ? "var(--mint-l)" : "var(--cream)", color: asPaypal ? "var(--green)" : "var(--ink)", borderColor: "currentColor" }}>
+              <span className="dot" /> <span style={{ color: "var(--ink)" }}>{asPaypal ? t("me.paypal.connected") : t("me.paypal.notConnected")}</span>
             </span>
           </div>
-          <p className="tiny muted" style={{ fontWeight: 700 }}>{t("me.paypal.body")}</p>
-          <span className="mono tiny" style={{ opacity: .8 }}>sb-{me.handle}@personal.example · sandbox</span>
+          <p className="tiny muted" style={{ fontWeight: 700 }}>{asPaypal ? t("me.paypal.bodyLive") : t("me.paypal.bodyGuest")}</p>
+          {asPaypal && pp ? (
+            <span className="mono tiny" style={{ opacity: .85 }}>{pp.email} · {pp.payerId} · sandbox</span>
+          ) : (
+            <span className="mono tiny" style={{ opacity: .6 }}>sb-{me.handle}@personal.example</span>
+          )}
         </div>
         <div className="row" style={{ gap: 10 }}>
-          <button className="btn sm" onClick={() => ping(t("me.toast.edit"))}><Icon name="refresh" size={15} /> {t("me.paypal.manage")}</button>
+          {asPaypal ? (
+            <button className="btn sm" onClick={() => ping(t("me.toast.edit"))}><Icon name="refresh" size={15} /> {t("me.paypal.manage")}</button>
+          ) : (
+            <Link className="btn sm" href="/signin"><Icon name="wallet" size={15} /> {t("me.menu.signin")}</Link>
+          )}
           <a className="btn sm" href="https://developer.paypal.com/docs/" target="_blank" rel="noreferrer"><Icon name="link" size={15} /> {t("me.paypal.docs")}</a>
         </div>
       </div>
@@ -217,7 +261,7 @@ export default function ProfilePage() {
           <b style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>{t("me.signoutCard")}</b>
           <p className="tiny muted" style={{ fontWeight: 700 }}>{t("me.signoutBody")}</p>
         </div>
-        <button className="btn" style={{ background: "var(--red)", color: "#fff" }} onClick={() => ping(t("me.toast.bye"))}>
+        <button className="btn" style={{ background: "var(--red)", color: "#fff" }} onClick={doSignOut}>
           <Icon name="x" size={16} /> {t("me.menu.signout")}
         </button>
       </div>

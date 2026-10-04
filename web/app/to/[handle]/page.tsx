@@ -52,7 +52,7 @@ export default function PublicOrderPage() {
             <div style={{ marginTop: -36, position: "relative", zIndex: 2 }}><Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={78} /></div>
             <h1 style={{ fontSize: 28, marginTop: 10 }}>{me.name}</h1>
             <div className="row tiny muted" style={{ gap: 6, marginTop: 4, fontWeight: 700 }}>
-              <Icon name="globe" size={14} /> {me.city} <Country code={me.country} /> · EN / ID / 中文
+              <Icon name="globe" size={14} /> {me.city ? `${me.city} ` : ""}{me.country ? <Country code={me.country} /> : null} · EN / ID / 中文
             </div>
             <p style={{ marginTop: 12, lineHeight: 1.55 }}>{me.bio}</p>
             <div className="row wrap" style={{ gap: 8, marginTop: 14 }}>

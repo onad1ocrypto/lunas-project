@@ -13,7 +13,7 @@ const MARQ_KEYS = Array.from({ length: 10 }, (_, i) => `marq.${i + 1}`);
 
 export default function Landing() {
   const { t, money } = useI18n();
-  const { me, justSignedOut, clearJustSignedOut } = useMe();
+  const { me, session, justSignedOut, clearJustSignedOut } = useMe();
   const [stamped, setStamped] = useState(0);
   const [pairIdx, setPairIdx] = useState(0);
   const [bye, setBye] = useState(false);
@@ -51,6 +51,13 @@ export default function Landing() {
         <div className="row" style={{ gap: 10 }}>
           <ThemeSwitch />
           <LangSwitch compact />
+          {session.mode === "paypal" && session.paypal ? (
+            <Link href="/signin" className="chip" style={{ gap: 8, fontWeight: 800 }} title={t("me.signed.pp")}>
+              <span className="dot" style={{ background: "var(--green)" }} /> {session.paypal.email}
+            </Link>
+          ) : (
+            <Link href="/signin" className="btn sm">{t("lp.signin")}</Link>
+          )}
           <Link href="/dashboard" className="btn ink sm">{t("lp.openApp")} <Icon name="right" size={16} /></Link>
         </div>
       </header>
