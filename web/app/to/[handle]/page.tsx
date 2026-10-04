@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { ME, type Criterion } from "@/lib/data";
+import { api } from "@/lib/api";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter } from "@/components/DraftContract";
@@ -11,7 +12,7 @@ import { Avatar, Confetti, Country, LangSwitch, Logo, Product, ThemeSwitch } fro
 
 
 export default function PublicOrderPage() {
-  const { t, money } = useI18n();
+  const { t, money, lang } = useI18n();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [brief, setBrief] = useState("");
@@ -19,6 +20,32 @@ export default function PublicOrderPage() {
   const [budget, setBudget] = useState<number | "">("");
   const [sent, setSent] = useState(false);
   const [fire, setFire] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ id: string; payUrl: string } | null>(null);
+
+  /** Public client form → real escrow order + payment link (no account required). */
+  const submit = async () => {
+    setSending(true);
+    setErr(null);
+    const res = await api.createOrder({
+      direction: "from_client",
+      brief,
+      amount: Number(budget) || undefined,
+      currency: "USD",
+      lang,
+      client: { name: name.trim(), email: email.trim() },
+      criteria,
+    });
+    setSending(false);
+    if (!res.ok) {
+      setErr(res.error ?? "Something went wrong — please try again.");
+      return;
+    }
+    setCreated({ id: res.data.order.id, payUrl: res.data.payUrl });
+    setSent(true);
+    setFire((f) => f + 1);
+  };
 
   const ready = name.trim().length > 1 && /\S+@\S+/.test(email) && criteria.length > 0 && Number(budget) > 0;
   const skills = [
@@ -103,10 +130,13 @@ export default function PublicOrderPage() {
                   <label htmlFor="b">{t("pub.budget")}</label>
                   <input id="b" type="number" min={1} className="input" value={budget} onChange={(e) => setBudget(e.target.value ? Number(e.target.value) : "")} placeholder="150" />
                 </div>
-                <button className="btn pink lg" disabled={!ready} onClick={() => { setSent(true); setFire((f) => f + 1); }}>
-                  <Icon name="send" size={18} /> {t("pub.send")}
+                <button className="btn pink lg" disabled={!ready || sending} onClick={submit}>
+                  {sending
+                    ? <><span className="spin" style={{ width: 16, height: 16, border: "2.5px solid var(--ink)", borderTopColor: "transparent", borderRadius: "50%" }} /> Drafting the contract…</>
+                    : <><Icon name="send" size={18} /> {t("pub.send")}</>}
                 </button>
               </div>
+              {err && <p className="tiny" style={{ marginTop: 10, color: "var(--red)" }}>{err}</p>}
               <p className="tiny muted" style={{ marginTop: 10 }}>{t("pub.noPayYet")}</p>
             </>
           ) : (
@@ -122,9 +152,21 @@ export default function PublicOrderPage() {
                   </div>
                 ))}
               </div>
+              {created && (
+                <div className="card pad" style={{ background: "var(--paper)", maxWidth: 520, width: "100%" }}>
+                  <div className="kbd">Escrow ready · {created.id}</div>
+                  <p className="tiny" style={{ margin: "8px 0 10px" }}>
+                    The contract is drafted and locked. Fund the escrow with PayPal — {ME.name.split(" ")[0]} only gets paid when
+                    every criterion below passes:
+                  </p>
+                  <div className="row wrap" style={{ gap: 8, justifyContent: "center" }}>
+                    <Link href={`/pay/${created.id}`} className="btn paypal lg"><Icon name="lock" size={16} /> {t("pub.next2", { amount: money(Number(budget) || 0) })}</Link>
+                  </div>
+                </div>
+              )}
               <div className="row wrap" style={{ gap: 10, justifyContent: "center", marginTop: 8 }}>
-                <Link href="/orders?tab=from_client" className="btn ink">{t("pub.seeAsSari")} <Icon name="right" size={16} /></Link>
-                <button className="btn" onClick={() => { setSent(false); setBrief(""); setCriteria([]); }}>{t("pub.another")}</button>
+                <Link href={created ? `/orders/${created.id}` : "/orders?tab=from_client"} className="btn ink">{t("pub.seeAsSari")} <Icon name="right" size={16} /></Link>
+                <button className="btn" onClick={() => { setSent(false); setBrief(""); setCriteria([]); setCreated(null); }}>{t("pub.another")}</button>
               </div>
             </div>
           )}

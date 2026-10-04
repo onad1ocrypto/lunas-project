@@ -8,12 +8,34 @@ import { ME, STATUS_STYLE, type Person, type ProductKind, type Status } from "@/
 import { Icon } from "./Icon";
 
 /* ---------------- Logo ---------------- */
-export function Logo({ href = "/", size = 40 }: { href?: string; size?: number }) {
+/** Top-corner lockup: gold LUNAS mark + wordmark, drawn from the supplied artwork. */
+export function Logo({ href = "/", size = 38 }: { href?: string; size?: number }) {
   return (
     <Link href={href} className="logo-lockup wiggle" aria-label="Lunas">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/lockup-h.png" alt="Lunas" style={{ height: size }} />
+      <img
+        src="/brand/lunas-lockup-640.png"
+        alt="Lunas"
+        width={640}
+        height={270}
+        style={{ height: size, width: "auto", display: "block" }}
+      />
     </Link>
+  );
+}
+
+/** Emblem-only variant (favicon-sized spots, receipts, loading screens). */
+export function Emblem({ size = 48, className = "" }: { size?: number; className?: string }) {
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src="/brand/lunas-emblem.png"
+      alt="Lunas"
+      width={512}
+      height={512}
+      className={className}
+      style={{ width: size, height: size, display: "block" }}
+    />
   );
 }
 

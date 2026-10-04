@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { Criterion } from "@/lib/data";
+import { api } from "@/lib/api";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter, CriteriaList } from "@/components/DraftContract";
@@ -12,7 +13,7 @@ import { Confetti, Toast } from "@/components/ui";
 const FEE = 0.025;
 
 export default function NewOrder() {
-  const { t, money } = useI18n();
+  const { t, money, lang } = useI18n();
   const [step, setStep] = useState(0);
   const [client, setClient] = useState({ name: "", email: "", country: "JP", currency: "USD" });
   const [brief, setBrief] = useState("");
@@ -24,6 +25,9 @@ export default function NewOrder() {
   const [newCrit, setNewCrit] = useState("");
   const [fire, setFire] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [created, setCreated] = useState<{ id: string; payUrl: string; engine: string } | null>(null);
 
   const steps = [t("new.s1"), t("new.s2"), t("new.s3"), t("new.s4")];
   const canNext = [client.name.trim().length > 1 && /\S+@\S+/.test(client.email), criteria.length > 0, amount > 0 && criteria.length > 0, true][step];
@@ -32,6 +36,33 @@ export default function NewOrder() {
     const n = Math.min(3, step + 1);
     setStep(n);
     if (n === 3) setFire((f) => f + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /** Creates the escrow order server-side and returns the real client payment link. */
+  const send = async () => {
+    setSending(true);
+    setSendError(null);
+    const res = await api.createOrder({
+      title,
+      brief,
+      amount,
+      currency: client.currency,
+      due,
+      windowHours: win,
+      direction: "to_client",
+      client: { name: client.name, email: client.email, country: client.country },
+      criteria,
+      lang,
+    });
+    setSending(false);
+    if (!res.ok) {
+      setSendError(res.error ?? "Could not create the order — try again.");
+      return;
+    }
+    setCreated({ id: res.data.order.id, payUrl: res.data.payUrl, engine: res.data.engine });
+    setStep(3);
+    setFire((f) => f + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -169,12 +200,22 @@ export default function NewOrder() {
           </div>
 
           <div className="row wrap" style={{ gap: 10, justifyContent: "center", marginTop: 20 }}>
-            <code className="share-link2">lunas.app/pay/LNS-0152</code>
-            <button className="btn lemon" onClick={async () => { try { await navigator.clipboard.writeText("https://lunas.app/pay/LNS-0152"); } catch {} setCopied(true); setTimeout(() => setCopied(false), 1600); }}>
+            <code className="share-link2">{created?.payUrl ?? "creating your link…"}</code>
+            <button className="btn lemon" onClick={async () => { try { await navigator.clipboard.writeText(created?.payUrl ?? ""); } catch {} setCopied(true); setTimeout(() => setCopied(false), 1600); }}>
               <Icon name="copy" size={16} /> {t("new.copy")}
             </button>
-            <button className="btn"><Icon name="mail" size={16} /> {t("new.email")}</button>
+            {created && (
+              <a className="btn" href={`mailto:${client.email}?subject=${encodeURIComponent(title || "Your order")}&body=${encodeURIComponent(`Hi ${client.name},\n\nHere is your Lunas escrow link — the money is only released when the work passes verification:\n${created.payUrl}\n\n— Sari`)}`}>
+                <Icon name="mail" size={16} /> {t("new.email")}
+              </a>
+            )}
           </div>
+          {created && (
+            <p className="tiny muted" style={{ textAlign: "center", marginTop: 8 }}>
+              Order <b className="mono">{created.id}</b> created · contract drafted by the{" "}
+              <b>{created.engine === "llm" ? "LLM" : "heuristic"}</b> Contract Agent
+            </p>
+          )}
 
           <div className="preview card">
             <div className="kbd">{t("new.previewT")}</div>
@@ -190,18 +231,27 @@ export default function NewOrder() {
           </div>
 
           <div className="row wrap" style={{ gap: 10, justifyContent: "center", marginTop: 22 }}>
-            <Link href="/orders/LNS-0151" className="btn ink">{t("new.goOrder")} <Icon name="right" size={16} /></Link>
+            <Link href={`/orders/${created?.id ?? "LNS-0151"}`} className="btn ink">{t("new.goOrder")} <Icon name="right" size={16} /></Link>
             <button className="btn" onClick={() => { setStep(0); setBrief(""); setCriteria([]); setTitle(""); }}>{t("new.another")}</button>
           </div>
         </section>
       )}
 
       {step < 3 && (
-        <div className="row between">
-          <button className="btn" disabled={step === 0} onClick={() => setStep(step - 1)}><Icon name="left" size={16} /> {t("common.back")}</button>
-          <button className={`btn ${step === 2 ? "pink" : "ink"}`} disabled={!canNext} onClick={next}>
-            {step === 2 ? <><Icon name="send" size={16} /> {t("new.send")}</> : <>{t("common.next")} <Icon name="right" size={16} /></>}
-          </button>
+        <div className="col" style={{ gap: 10 }}>
+          {sendError && (
+            <div className="card pad tiny" style={{ background: "var(--red-l)", borderLeft: "8px solid var(--red)" }}>
+              <b>Could not create the order:</b> {sendError}
+            </div>
+          )}
+          <div className="row between">
+            <button className="btn" disabled={step === 0 || sending} onClick={() => setStep(step - 1)}><Icon name="left" size={16} /> {t("common.back")}</button>
+            <button className={`btn ${step === 2 ? "pink" : "ink"}`} disabled={!canNext || sending} onClick={step === 2 ? send : next}>
+              {step === 2
+                ? sending ? <><span className="spin" style={{ width: 15, height: 15, border: "2.5px solid var(--ink)", borderTopColor: "transparent", borderRadius: "50%" }} /> Creating escrow…</> : <><Icon name="send" size={16} /> {t("new.send")}</>
+                : <>{t("common.next")} <Icon name="right" size={16} /></>}
+            </button>
+          </div>
         </div>
       )}
 
