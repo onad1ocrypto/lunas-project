@@ -32,6 +32,25 @@ export const MAX_PORTFOLIO = 6;
 export const SOCIAL_KEYS = ["x", "linkedin", "instagram", "website"] as const;
 export type SocialKey = (typeof SOCIAL_KEYS)[number];
 
+/* ---------- masking for screen recordings ----------
+   The signed-in screen shows which PayPal sandbox account is connected. That is useful
+   for the owner but should not end up in a demo video, so it is masked until revealed. */
+
+/** Keep the domain, hide the local part: "sb-1234x@personal.example.com" -> "s••••••@personal.example.com" */
+export function maskEmail(email: string): string {
+  const s = (email || "").trim();
+  const at = s.indexOf("@");
+  if (at <= 0) return s ? "•••" : "";
+  const local = s.slice(0, at);
+  return `${local.slice(0, 1)}${"•".repeat(Math.min(12, Math.max(4, local.length - 1)))}${s.slice(at)}`;
+}
+
+/** Show only the tail of an account id: a long PayPal user id -> "…XyE4PXS9" */
+export function maskId(id: string): string {
+  const alnum = (id || "").replace(/[^A-Za-z0-9]/g, "");
+  return alnum.length > 4 ? `…${alnum.slice(-8)}` : "•••";
+}
+
 /** Only http(s) links ever reach an href; a bare "x.com/me" gets https:// prefixed. */
 export function normalizeUrl(raw: string): string {
   const v = (raw || "").trim();

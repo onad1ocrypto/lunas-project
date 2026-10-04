@@ -6,7 +6,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { LANGS, useI18n } from "@/lib/i18n";
 import { THEMES, useTheme } from "@/lib/theme";
 import { type Person, type ProductKind, type Status } from "@/lib/data";
-import { initialsOf, ME_COLOR, useMe } from "@/lib/me";
+import { initialsOf, maskEmail, ME_COLOR, useMe } from "@/lib/me";
 import { Icon } from "./Icon";
 
 /* ---------------- Logo ---------------- */
@@ -101,7 +101,7 @@ export function ProfileMenu() {
                 </span>
                 {asPaypal && pp && (
                   <span className="tiny" style={{ color: "#0E7A4D", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {t("me.signed.pp")} · {pp.email}
+                    {t("me.signed.pp")} · {maskEmail(pp.email)}
                   </span>
                 )}
               </div>

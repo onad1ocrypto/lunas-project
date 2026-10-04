@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
-import { useMe } from "@/lib/me";
+import { maskEmail, useMe } from "@/lib/me";
 import { Capi } from "@/components/Capi";
 import { CapiPose } from "@/components/ui";
 import { Icon } from "@/components/Icon";
@@ -53,7 +53,7 @@ export default function Landing() {
           <LangSwitch compact />
           {session.mode === "paypal" && session.paypal ? (
             <Link href="/signin" className="chip" style={{ gap: 8, fontWeight: 800 }} title={t("me.signed.pp")}>
-              <span className="dot" style={{ background: "var(--green)" }} /> {session.paypal.email}
+              <span className="dot" style={{ background: "var(--green)" }} /> {maskEmail(session.paypal.email)}
             </Link>
           ) : (
             <Link href="/signin" className="btn sm">{t("lp.signin")}</Link>

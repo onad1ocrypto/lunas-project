@@ -439,6 +439,11 @@ const en: Record<string, string> = {
   "me.publish.off": "Not published yet — press Save to publish it",
   "me.publish.guest": "Only on this device — log in with PayPal to publish",
   "me.saved.tableMissing": "Saved on this device. The Supabase table is missing — run the setup SQL once.",
+  /* ---------- masking account details ---------- */
+  "me.reveal": "Show details",
+  "me.hide": "Hide details",
+  "me.mask.hint": "Account details are hidden so they don't show up in screen recordings.",
+
 };
 
 const zh: Record<string, string> = {
@@ -879,6 +884,11 @@ const zh: Record<string, string> = {
   "me.publish.off": "尚未发布 — 按“保存”即可发布",
   "me.publish.guest": "仅保存在本设备 — 使用 PayPal 登录后可发布",
   "me.saved.tableMissing": "已保存在本设备。缺少 Supabase 数据表 — 请先执行一次建表 SQL。",
+  /* ---------- 隐藏账户信息 ---------- */
+  "me.reveal": "显示详情",
+  "me.hide": "隐藏详情",
+  "me.mask.hint": "账户信息默认隐藏，避免出现在录屏中。",
+
 };
 
 const id: Record<string, string> = {
@@ -1319,6 +1329,11 @@ const id: Record<string, string> = {
   "me.publish.off": "Belum terbit — tekan Simpan untuk menerbitkan",
   "me.publish.guest": "Hanya di perangkat ini — masuk dengan PayPal untuk menerbitkan",
   "me.saved.tableMissing": "Tersimpan di perangkat ini. Tabel Supabase belum ada — jalankan SQL setup sekali saja.",
+  /* ---------- sembunyikan detail akun ---------- */
+  "me.reveal": "Tampilkan detail",
+  "me.hide": "Sembunyikan detail",
+  "me.mask.hint": "Detail akun disembunyikan supaya tidak ikut terekam saat membuat video.",
+
 };
 
 export const dict: Record<Lang, Record<string, string>> = { en, zh, id };
