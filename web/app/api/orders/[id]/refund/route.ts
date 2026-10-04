@@ -1,3 +1,4 @@
+import { withTicket } from "@/lib/server/ticket";
 import { fail, json } from "@/lib/server/http";
 import { refundEscrow } from "@/lib/server/flow";
 import { hydrateFromTicket } from "@/lib/server/resolve";
@@ -19,7 +20,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const body = (await req.json().catch(() => ({}))) as { reason?: string; amount?: number };
     const reason = (body.reason ?? "delivery did not meet the agreed criteria").slice(0, 200);
     const res = await refundEscrow(id, reason, typeof body.amount === "number" && body.amount > 0 ? body.amount : undefined);
-    return json({ ok: true, refund: res.refund, order: res.order });
+    return json(withTicket({ ok: true, refund: res.refund, order: res.order }));
   } catch (e) {
     return fail(e);
   }

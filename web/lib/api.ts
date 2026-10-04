@@ -24,7 +24,18 @@ async function call<T>(url: string, init?: RequestInit): Promise<ApiResult<T>> {
       ...((init?.headers as Record<string, string>) ?? {}),
     };
     const res = await fetch(url, { ...init, headers });
-    const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+    const data = (await res.json().catch(() => ({}))) as T & { error?: string; ticket?: string; order?: { id?: string }; orderId?: string };
+
+    /**
+     * Every state-changing response carries a fresh signed ticket (escrow funded, delivery
+     * verified, paid…). Storing the newest one is what keeps a cold-started server from
+     * resurrecting a stale status.
+     */
+    if (res.ok && data.ticket) {
+      const id = data.order?.id ?? data.orderId ?? orderIdOf(url, init?.body);
+      if (id) rememberTicket(id, data.ticket);
+    }
+
     return { ok: res.ok && (data as { ok?: boolean }).ok !== false, status: res.status, data, error: res.ok ? undefined : data.error ?? `HTTP ${res.status}` };
   } catch (e) {
     return { ok: false, status: 0, data: {} as T, error: (e as Error).message };

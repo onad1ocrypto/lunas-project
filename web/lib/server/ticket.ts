@@ -66,3 +66,17 @@ export function verifyTicket<T = Record<string, unknown>>(ticket: string | null 
 }
 
 export const TICKET_HEADER = "x-lunas-ticket";
+
+/**
+ * Attach a freshly signed ticket to a response payload.
+ *
+ * Tickets go stale the moment the order changes (escrow funded, delivery verified, paid).
+ * Every state-changing response therefore re-issues one, and the browser stores the newest
+ * — otherwise a cold start would resurrect an old status, which is exactly the bug that
+ * made a funded order show up as "awaiting payment".
+ */
+export function withTicket<T extends { order?: { id: string } | null }>(payload: T): T & { ticket?: string } {
+  const order = payload?.order;
+  if (!order || typeof order.id !== "string") return payload;
+  return { ...payload, ticket: signTicket({ order: compactSnapshot(order as Record<string, unknown>) }) };
+}

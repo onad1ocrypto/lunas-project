@@ -1,3 +1,4 @@
+import { withTicket } from "@/lib/server/ticket";
 import { fail, json } from "@/lib/server/http";
 import { autoReleaseIfDue, releaseEscrow } from "@/lib/server/flow";
 import { hydrateFromTicket } from "@/lib/server/resolve";
@@ -20,11 +21,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     if (body.force || body.actor === "client" || body.actor === "mediator") {
       const res = await releaseEscrow(id, body.actor === "mediator" ? "mediator" : "client_approved");
-      return json({ ok: true, released: true, alreadyPaid: res.alreadyPaid, payoutBatchId: res.batchId, order: res.order });
+      return json(withTicket({ ok: true, released: true, alreadyPaid: res.alreadyPaid, payoutBatchId: res.batchId, order: res.order }));
     }
 
     const check = await autoReleaseIfDue(id);
-    return json({ ok: true, ...check });
+    // the auto-release branch may return an order (released) or just a reason (still waiting)
+    return json(check && (check as any).order ? withTicket({ ok: true, ...check }) : { ok: true, ...check });
   } catch (e) {
     return fail(e);
   }
