@@ -2,7 +2,7 @@
 
 import { useI18n } from "@/lib/i18n";
 import type { Order, Status } from "@/lib/data";
-import { ME } from "@/lib/data";
+import { initialsOf, ME_COLOR, useMe } from "@/lib/me";
 import { Avatar, Country } from "./ui";
 import { Icon } from "./Icon";
 
@@ -15,11 +15,12 @@ export function moneyPos(s: Status): 0 | 1 | 2 {
 
 export function MoneyRail({ order, status }: { order: Order; status: Status }) {
   const { t, money } = useI18n();
+  const { me } = useMe();
   const pos = moneyPos(status);
   const funded = pos > 0;
   const coinLeft = ["calc(0% + 44px)", "calc(50% + 44px)", "calc(100% - 44px)"][pos];
   const statusText =
-    status === "paid" ? t("rail.paid", { amount: money(order.amount), name: ME.name.split(" ")[0] })
+    status === "paid" ? t("rail.paid", { amount: money(order.amount), name: me.name.split(" ")[0] })
     : funded ? t("rail.held", { amount: money(order.amount) })
     : status === "declined" ? t("rail.declined")
     : t("rail.notFunded");
@@ -58,8 +59,8 @@ export function MoneyRail({ order, status }: { order: Order; status: Status }) {
         <Node i={1} name={t("rail.escrow")} sub={<>PayPal sandbox</>}>
           <span className="avatar" style={{ width: 46, height: 46, background: "var(--ink)", color: "var(--lemon)" }}><Icon name="lock" size={20} /></span>
         </Node>
-        <Node i={2} name={ME.name.split(" ")[0] + " · " + t("rail.you")} sub={<>{ME.city} <Country code={ME.country} /></>}>
-          <Avatar p={ME} size={46} />
+        <Node i={2} name={me.name.split(" ")[0] + " · " + t("rail.you")} sub={<>{me.city} <Country code={me.country} /></>}>
+          <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={46} />
         </Node>
       </div>
       <div className="tiny" style={{ textAlign: "center", marginTop: 12, fontWeight: 700, color: status === "paid" ? "var(--green)" : "var(--ink-2)" }}>

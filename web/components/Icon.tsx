@@ -28,6 +28,7 @@ const P: Record<string, ReactNode> = {
   bell: <><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z" /><path d="M10 21h4" /></>,
   wallet: <><rect x="3" y="6" width="18" height="14" rx="3" /><path d="M16 13h2" /><path d="M3 9h15a3 3 0 0 0-3-3H6" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+  download: <><path d="M12 4v11" /><path d="M7 10l5 5 5-5" /><path d="M4 19h16" /></>,
   chevron: <><path d="M6 9l6 6 6-6" /></>,
   refresh: <><path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3" /><path d="M5 3v5h5M19 21v-5h-5" /></>,
   star: <><path d="M12 3l2.8 5.8 6.2.9-4.5 4.4 1 6.2L12 17.4 6.5 20.3l1-6.2L3 9.7l6.2-.9z" /></>,
@@ -36,6 +37,8 @@ const P: Record<string, ReactNode> = {
   filter: <><path d="M4 5h16l-6 8v6l-4-2v-4z" /></>,
   bolt: <><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></>,
   bot: <><rect x="4" y="8" width="16" height="12" rx="4" /><path d="M12 4v4M9 14h.01M15 14h.01" /></>,
+  scale: <><path d="M12 4v16M8 20h8M12 6L5 8m7-2l7 2" /><path d="M5 8l-2.5 5.5a2.8 2.8 0 0 0 5 0z" /><path d="M19 8l-2.5 5.5a2.8 2.8 0 0 0 5 0z" /></>,
+  refund: <><path d="M4 10h12a4.5 4.5 0 0 1 0 9H9" /><path d="M7.5 6.5L4 10l3.5 3.5" /><path d="M13 15.5h.01" /></>,
 };
 
 export type IconName = keyof typeof P;

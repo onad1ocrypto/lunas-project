@@ -4,14 +4,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import { useMe } from "@/lib/me";
 import { getOrder, ORDERS, type Order, type ProductKind, type Status } from "@/lib/data";
-import { api } from "@/lib/api";
-import { payLinkWithTicket } from "@/lib/ticket-client";
 import { MoneyRail } from "@/components/MoneyRail";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { CriteriaList } from "@/components/DraftContract";
-import { Avatar, Confetti, Country, Product, StatusBadge, Toast } from "@/components/ui";
+import {Avatar, Confetti, Country, Product, StatusBadge, Toast, CapiPose } from "@/components/ui";
 
 type Log = { who: string; msg: string; res?: string; kind: "ai" | "pp" | "hook" | "err" };
 
@@ -31,13 +30,14 @@ export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
   const order = getOrder(id) ?? ORDERS[0];
   const { t, money, date } = useI18n();
+  const { me } = useMe();
   const [status, setStatus] = useState<Status>(order.status);
   const [logs, setLogs] = useState<Log[]>(() => seedLogs(order));
   const [fire, setFire] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [justPaid, setJustPaid] = useState(false);
-  /** Real ids returned by PayPal — shown on the receipt so nothing in the demo is invented. */
-  const [pp, setPp] = useState<{ captureId?: string; paypalOrderId?: string; payoutBatchId?: string }>({});
+  const [capture, setCapture] = useState("");
+  const [refundInfo, setRefundInfo] = useState<{ percent: number; id: string; status: string; sim: boolean } | null>(null);
 
   const log = (l: Log) => setLogs((x) => [...x, l]);
   const flash = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
@@ -87,29 +87,23 @@ export default function OrderDetail() {
         <div className="col" style={{ gap: 20 }}>
           {status === "request" && (
             <RequestPanel order={order}
-              onAccept={() => { setStatus("awaiting_payment"); log({ who: "contract", msg: "accepted by Sari", res: "payment link sent to client", kind: "hook" }); flash(t("toast.accepted")); }}
+              onAccept={() => { setStatus("awaiting_payment"); log({ who: "contract", msg: `accepted by ${me.name.split(" ")[0]}`, res: "payment link sent to client", kind: "hook" }); flash(t("toast.accepted")); }}
               onDecline={() => { setStatus("declined"); log({ who: "contract", msg: "declined", kind: "err" }); }} />
           )}
           {status === "awaiting_payment" && (
-            <PaymentPanel order={order} log={log} onPaid={(info) => { setStatus("in_escrow"); setPp((p) => ({ ...p, ...info })); flash(t("toast.funded")); }} />
+            <PaymentPanel order={order} log={log} onCapture={setCapture}
+              onPaid={() => { setStatus("in_escrow"); flash(t("toast.funded")); }} />
           )}
           {(status === "in_escrow" || status === "verifying" || status === "revision") && (
             <DeliveryPanel order={order} status={status} setStatus={setStatus} log={log} />
           )}
           {status === "review" && (
             <ReviewPanel order={order} log={log}
-              onApproved={(info) => { setStatus("paid"); setJustPaid(true); setPp((p) => ({ ...p, ...info })); setFire((f) => f + 1); }}
-              onRefunded={() => { setStatus("refunded"); flash("Client refunded via PayPal"); }} />
+              onApproved={() => { setStatus("paid"); setJustPaid(true); setFire((f) => f + 1); }} />
           )}
-          {status === "paid" && <PaidPanel order={order} slam={justPaid} payoutBatchId={pp.payoutBatchId} />}
-          {status === "refunded" && (
-            <div className="card pad rise" style={{ background: "var(--peach-l)" }}>
-              <PanelHead color="var(--peach)" icon="shield" title="Refunded — dispute resolved" sub="The Mediator Agent returned the client's money through the PayPal refund API. Escrow is empty, nobody lost trust." />
-              <div className="row wrap" style={{ gap: 10 }}>
-                <span className="badge" style={{ background: "var(--paper)" }}>Payments v1 · refund</span>
-                <span className="badge" style={{ background: "var(--paper)" }}>no chargeback</span>
-              </div>
-            </div>
+          {status === "paid" && <PaidPanel order={order} slam={justPaid} refundInfo={refundInfo} />}
+          {(status === "review" || status === "paid") && (
+            <MediatorPanel order={order} log={log} capture={capture} onRefunded={setRefundInfo} />
           )}
           {status === "declined" && (
             <div className="card pad col" style={{ alignItems: "center", gap: 10, textAlign: "center" }}>
@@ -129,7 +123,7 @@ export default function OrderDetail() {
                 <div className="row tiny muted" style={{ gap: 5 }}>{order.client.city} <Country code={order.client.country} /> · {t("od.briefFrom")}</div>
               </div>
             </div>
-            <div className="bubble">{order.brief}</div>
+            <div className="bubble">{order.brief.replaceAll("Sari", me.name.split(" ")[0])}</div>
           </div>
         </div>
 
@@ -194,53 +188,64 @@ function RequestPanel({ order, onAccept, onDecline }: { order: Order; onAccept: 
   );
 }
 
-function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => void; onPaid: (info?: { captureId?: string; paypalOrderId?: string }) => void }) {
+function PaymentPanel({ order, log, onPaid, onCapture }: { order: Order; log: (l: Log) => void; onPaid: () => void; onCapture?: (id: string) => void }) {
   const { t } = useI18n();
+  const { me } = useMe();
   const sleep = useSleep();
   const [phase, setPhase] = useState<"wait" | "paying" | "sealed">("wait");
-  const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  /**
-   * Orders v2 → capture. Two calls, real PayPal when keys are configured, simulator when
-   * they are not. Either way the ids that land in the log come from the server.
-   */
+  const PID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "";
+  const [sdk, setSdk] = useState(false);
+  const ppRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!PID) return;
+    const s = document.createElement("script");
+    s.src = `https://www.paypal.com/sdk/js?client-id=${PID}&currency=USD&intent=capture`;
+    s.async = true;
+    s.onload = () => setSdk(true);
+    document.head.appendChild(s);
+    return () => { document.head.removeChild(s); };
+  }, [PID]);
+  useEffect(() => {
+    if (!PID || !sdk || !ppRef.current || phase !== "wait") return;
+    const w = window as unknown as { paypal?: { Buttons: (o: Record<string, unknown>) => { render: (el: HTMLElement) => Promise<void> } } };
+    if (!w.paypal) return;
+    ppRef.current.innerHTML = "";
+    w.paypal.Buttons({
+      style: { layout: "vertical", color: "gold", shape: "pill", label: "paypal", height: 44 },
+      createOrder: async () => {
+        log({ who: "paypal", msg: "orders.create", res: `intent: CAPTURE · ${order.amount.toFixed(2)} ${order.currency}`, kind: "pp" });
+        const r = await fetch("/api/paypal/create-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId: order.id, amount: order.amount, currency: order.currency, description: order.title, nonce: Date.now() }) });
+        const j = await r.json();
+        if (!r.ok || !j.paypalOrderId) throw new Error(j.error || "orders.create failed");
+        return j.paypalOrderId as string;
+      },
+      onApprove: async (data: { orderID: string }) => {
+        setPhase("paying");
+        log({ who: "paypal", msg: "orders.capture", res: `id: ${data.orderID.slice(0, 14)}…`, kind: "pp" });
+        const r = await fetch("/api/paypal/capture-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paypalOrderId: data.orderID }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "orders.capture failed");
+        if (j.captureId) { onCapture?.(String(j.captureId)); log({ who: "paypal", msg: "capture.id", res: String(j.captureId), kind: "pp" }); }
+        setPhase("sealed");
+        log({ who: "webhook", msg: "PAYMENT.CAPTURE.COMPLETED", res: `order → IN_ESCROW · ${me.name.split(" ")[0]} notified`, kind: "hook" });
+        await new Promise((res) => setTimeout(res, 900));
+        onPaid();
+      },
+      onError: (e: unknown) => { log({ who: "paypal", msg: "sdk.error", res: String(e).slice(0, 80), kind: "err" }); setPhase("wait"); },
+    }).render(ppRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [PID, sdk, phase]);
   const pay = async () => {
     try {
-      setError(null);
       setPhase("paying");
-      const created = await api.createEscrowPayment(order.id);
-      if (!created.ok) {
-        log({ who: "paypal", msg: "orders.create", res: `FAILED: ${created.error}`, kind: "err" });
-        setError(created.error ?? "PayPal refused the request");
-        setPhase("wait");
-        return;
-      }
-      const d = created.data;
-      setApprovalUrl(d.approvalUrl ?? null);
-      log({
-        who: "paypal",
-        msg: "orders.create",
-        res: `intent: CAPTURE · ${Number(d.amount).toFixed(2)} ${d.currency} · ${d.paypalOrderId}${d.simulated ? " (simulated)" : ""}`,
-        kind: "pp",
-      });
-      await sleep(900);
-
-      const captured = await api.captureEscrowPayment(d.paypalOrderId, order.id);
-      if (!captured.ok) {
-        log({ who: "paypal", msg: "orders.capture", res: `FAILED: ${captured.error}`, kind: "err" });
-        setError(captured.error ?? "Capture failed");
-        setPhase("wait");
-        return;
-      }
-      log({ who: "paypal", msg: "orders.capture", res: `status: ${String(captured.data.status ?? "COMPLETED").toUpperCase()} · ${captured.data.captureId ?? "capture id pending"}`, kind: "pp" });
+      log({ who: "paypal", msg: "orders.create", res: `intent: CAPTURE · ${(order.amount * 1.025).toFixed(2)} USD`, kind: "pp" });
+      await sleep(1100);
+      log({ who: "paypal", msg: "orders.capture", res: "status: COMPLETED", kind: "pp" });
       setPhase("sealed");
-      await sleep(1400);
-      log({ who: "webhook", msg: "PAYMENT.CAPTURE.COMPLETED", res: `order → IN_ESCROW · ${order.client.name.split(" ")[0]} funded the escrow`, kind: "hook" });
-      onPaid({ captureId: captured.data.captureId, paypalOrderId: d.paypalOrderId });
-    } catch {
-      setPhase("wait");
-    }
+      await sleep(1700);
+      log({ who: "webhook", msg: "PAYMENT.CAPTURE.COMPLETED", res: `order → IN_ESCROW · ${me.name.split(" ")[0]} notified`, kind: "hook" });
+      onPaid();
+    } catch {}
   };
   return (
     <div className="card pad rise" style={{ background: "var(--lemon-l)" }}>
@@ -258,26 +263,17 @@ function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => v
           <div className="env-seal">L</div>
         </div>
         <div className="col" style={{ gap: 10 }}>
-          <Link href={`/pay/${order.id}`} className="code-link" style={{ background: "var(--paper)", border: "2.5px dashed var(--ink)", borderRadius: 12, padding: "10px 12px", fontWeight: 800, display: "block", wordBreak: "break-all" }}>
-            {"</>"} Client checkout · /pay/{order.id}
-          </Link>
+          <code style={{ background: "var(--paper)", border: "2.5px dashed var(--ink)", borderRadius: 12, padding: "10px 12px", fontWeight: 800 }}>lunas.app/pay/{order.id}</code>
           <div className="row wrap" style={{ gap: 8 }}>
-            <button
-              className="btn sm"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(payLinkWithTicket(`${window.location.origin}/pay/${order.id}`, order.id));
-                } catch {}
-              }}
-            >
-              <Icon name="copy" size={15} /> {t("new.copy")}
-            </button>
-            <Link className="btn sm" href={`/pay/${order.id}`} target="_blank"><Icon name="eye" size={15} /> {t("pay.remind")}</Link>
-            {approvalUrl && phase === "wait" && (
-              <a className="btn sm" href={approvalUrl} target="_blank" rel="noreferrer"><Icon name="link" size={15} /> PayPal approval page</a>
-            )}
+            <button className="btn sm"><Icon name="copy" size={15} /> {t("new.copy")}</button>
+            <button className="btn sm"><Icon name="bell" size={15} /> {t("pay.remind")}</button>
           </div>
-          {error && <span className="tiny" style={{ color: "var(--red)" }}>{error}</span>}
+          {PID ? (
+            <div className="demo-box">
+              <div className="kbd" style={{ marginBottom: 8 }}>{sdk ? t("pay.sandbox") : t("pay.loading")}</div>
+              <div ref={ppRef} style={{ minHeight: 44 }} />
+            </div>
+          ) : (
           <div className="demo-box">
             <div className="kbd" style={{ marginBottom: 8 }}>{t("demo.label")}</div>
             <button className="btn paypal" disabled={phase !== "wait"} onClick={pay}>
@@ -286,13 +282,14 @@ function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => v
                 : <>{t("pay.simulate")} <i>Pay<b>Pal</b></i></>}
             </button>
           </div>
+          )}
         </div>
       </div>
       <style>{`
         .pay-grid{display:grid;grid-template-columns:220px 1fr;gap:22px;align-items:center}
         .env{position:relative;width:200px;height:130px;margin:40px auto 10px;perspective:600px}
         .env-back{position:absolute;inset:0;background:var(--peach);border:2.5px solid var(--ink);border-radius:12px}
-        .env-bill{position:absolute;left:30px;right:30px;top:-60px;height:70px;background:var(--mint);border:2.5px solid var(--ink);border-radius:8px;display:grid;place-items:center;font-family:var(--font-display);font-size:30px;font-weight:700;z-index:1;transition:transform .9s var(--ease)}
+        .env-bill{position:absolute;left:30px;right:30px;top:-60px;height:70px;background:var(--mint);color:#231942;border:2.5px solid var(--ink);border-radius:8px;display:grid;place-items:center;font-family:var(--font-display);font-size:30px;font-weight:700;z-index:1;transition:transform .9s var(--ease)}
         .env-bill.in{transform:translateY(95px)}
         .env-front{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;overflow:visible}
         .env-flap{position:absolute;left:0;top:0;width:100%;height:80px;transform-origin:top;transform:rotateX(180deg);z-index:0;overflow:visible;transition:transform .7s .8s var(--ease),z-index 0s 1.1s}
@@ -306,207 +303,129 @@ function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => v
   );
 }
 
+const DELIVERY: ProductKind[] = ["bottle", "mug", "shoe", "bag", "candle", "watch", "plant", "cap"];
+const BAD = 5;
 type Check = "idle" | "run" | "pass" | "fail";
-type VerifyRow = { label: string; rule: string; status: "pass" | "fail" | "manual"; evidence: string; engine: string };
 
-/**
- * Delivery panel — real uploads, real verification.
- *
- * Files go to POST /api/orders/:id/deliverables, where the server inspects the bytes
- * (format, dimensions, alpha, DPI, word counts) and runs the Verification Agent. The
- * animation mirrors the actual per-criterion results instead of a script.
- */
 function DeliveryPanel({ order, status, setStatus, log }: { order: Order; status: Status; setStatus: (s: Status) => void; log: (l: Log) => void }) {
   const { t } = useI18n();
   const sleep = useSleep();
-  const input = useRef<HTMLInputElement>(null);
-  const [picked, setPicked] = useState(status !== "in_escrow");
-  const [names, setNames] = useState<string[]>([]);
-  const [checks, setChecks] = useState<Check[]>(() => order.criteria.map(() => (status === "revision" ? "idle" : "idle")));
+  const [uploaded, setUploaded] = useState(status !== "in_escrow");
   const [scan, setScan] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [revisionNote, setRevisionNote] = useState<string | null>(null);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [checks, setChecks] = useState<Check[]>(() => order.criteria.map((_, i) => (status === "revision" ? (i === order.criteria.length - 1 ? "fail" : "pass") : "idle")));
+  const [fixed, setFixed] = useState(false);
+  const failIdx = order.criteria.length - 1;
+  const setC = (i: number, c: Check) => setChecks((x) => x.map((v, j) => (j === i ? c : v)));
 
-  const run = async (files: File[]) => {
-    if (!files.length || busy) return;
-    setBusy(true);
-    setError(null);
-    setPicked(true);
-    setRevisionNote(null);
-    setStatus("verifying");
-    setScan((s) => s + 1);
-    setChecks(order.criteria.map(() => "run"));
-    log({
-      who: "freelancer",
-      msg: "delivery.upload",
-      res: `${files.length} file(s) · ${(files.reduce((s, f) => s + f.size, 0) / 1e6).toFixed(1)} MB`,
-      kind: "hook",
-    });
-
-    const res = await api.submitDelivery(order.id, files);
-    if (!res.ok) {
-      log({ who: "verify_agent", msg: "delivery.rejected", res: res.error ?? "upload failed", kind: "err" });
-      setError(res.error ?? "Upload failed");
-      setStatus("in_escrow");
-      setChecks(order.criteria.map(() => "idle"));
-      setBusy(false);
-      return;
-    }
-
-    const results: VerifyRow[] = res.data?.verification?.results ?? [];
-    setNames(files.map((f) => f.name));
-    setSummary(res.data?.verification?.summary ?? null);
-
-    for (let i = 0; i < results.length; i++) {
-      await sleep(420);
-      const r = results[i];
-      setChecks((x) => x.map((v, j) => (j === i ? (r.status === "fail" ? "fail" : "pass") : v)));
-      log({
-        who: "verify_agent",
-        msg: r.rule,
-        res: `${r.status === "pass" ? "✓" : r.status === "fail" ? "✕" : "…"} ${r.evidence}`,
-        kind: r.status === "fail" ? "err" : r.status === "manual" ? "hook" : "ai",
-      });
-    }
-
-    await sleep(320);
-    const verdict: string = res.data?.verification?.verdict ?? "review";
-    log({ who: "verify_agent", msg: "verdict", res: res.data?.verification?.summary ?? verdict, kind: verdict === "revision" ? "err" : "ai" });
-    if (verdict === "revision") {
-      setRevisionNote(results.find((r) => r.status === "fail")?.evidence ?? "a criterion was not met");
-      setStatus("revision");
-    } else {
-      setStatus("review");
-    }
-    setBusy(false);
+  const upload = async () => {
+    try {
+      setUploaded(true);
+      log({ who: "webhook", msg: "delivery.uploaded", res: "20 files · 61.4 MB", kind: "hook" });
+    } catch {}
   };
-
-  const sample = async () => {
-    setBusy(true);
-    log({ who: "demo", msg: "sample_delivery.generate()", res: "rendering files in the browser to match the criteria", kind: "hook" });
-    const { buildSampleDelivery } = await import("@/lib/sample");
-    const { files, notes } = await buildSampleDelivery(order.criteria);
-    setBusy(false);
-    await run(files);
+  const verify = async () => {
+    try {
+      setStatus("verifying");
+      setScan((s) => s + 1);
+      log({ who: "verify_agent", msg: "start", res: `${order.criteria.length} criteria from ${order.id}`, kind: "ai" });
+      setChecks(order.criteria.map(() => "run"));
+      let verdict: { results?: { pass: boolean; note: string }[] } | null = null;
+      try {
+        const vr = await fetch("/api/agent/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ criteria: order.criteria, attempt: fixed ? 2 : 1 }) });
+        if (vr.ok) verdict = await vr.json();
+      } catch {}
+      for (let i = 0; i < order.criteria.length; i++) {
+        await sleep(650);
+        const fail = verdict?.results ? !verdict.results[i]?.pass : i === failIdx && !fixed;
+        const note = fail ? (verdict?.results?.[i]?.note ?? "IMG_014 ✕ (21% non-white)") : "✓";
+        setC(i, fail ? "fail" : "pass");
+        log({ who: "verify_agent", msg: order.criteria[i].rule, res: fail ? note.replace(":", " ✕") : "✓", kind: fail ? "err" : "ai" });
+      }
+      if (!fixed) {
+        await sleep(300);
+        log({ who: "verify_agent", msg: "request_revision(IMG_014)", res: "funds stay in escrow", kind: "ai" });
+        setStatus("revision");
+      } else {
+        await sleep(500);
+        log({ who: "verify_agent", msg: "all criteria met", res: "client review (72h)", kind: "ai" });
+        setStatus("review");
+      }
+    } catch {}
+  };
+  const reupload = async () => {
+    try {
+      setFixed(true);
+      log({ who: "webhook", msg: "delivery.revised", res: "IMG_014 v2", kind: "hook" });
+      setC(failIdx, "run");
+      await sleep(900);
+      setC(failIdx, "pass");
+      log({ who: "verify_agent", msg: order.criteria[failIdx].rule, res: "✓", kind: "ai" });
+      await sleep(700);
+      log({ who: "verify_agent", msg: "all criteria met", res: "client review (72h)", kind: "ai" });
+      setStatus("review");
+    } catch {}
   };
 
   const head = status === "revision" ? { c: "var(--peach)", i: "refresh", t: t("dl.revT"), s: t("dl.revB") }
     : status === "verifying" ? { c: "var(--lav)", i: "bot", t: t("dl.verT"), s: t("dl.verB") }
     : { c: "var(--sky)", i: "upload", t: t("dl.t"), s: t("dl.b") };
 
-  /** Thumbnails: uploaded file names when we have them, decorative placeholders otherwise. */
-  const thumbs: { label: string; kind?: ProductKind }[] = names.length
-    ? names.slice(0, 8).map((n) => ({ label: n }))
-    : DELIVERY_PLACEHOLDERS.slice(0, 8).map((p) => ({ label: p.label, kind: p.kind }));
-
   return (
     <div className="card pad rise" style={{ background: status === "revision" ? "var(--peach-l)" : status === "verifying" ? "var(--lav-l)" : "var(--sky-l)" }}>
       <PanelHead color={head.c} icon={head.i} title={head.t} sub={head.s} />
-
-      <input
-        ref={input}
-        type="file"
-        multiple
-        className="hidden-input"
-        onChange={(e) => run(Array.from(e.target.files ?? []))}
-      />
-
-      {!picked ? (
-        <>
-          <button className="drop" onClick={() => input.current?.click()} disabled={busy}>
-            <span className="drop-ic float"><Icon name="upload" size={30} /></span>
-            <b style={{ fontSize: 17 }}>{t("dl.drop")}</b>
-            <span className="tiny muted">{t("dl.dropSub")}</span>
-          </button>
-          <div className="row wrap" style={{ gap: 10, marginTop: 12, justifyContent: "center" }}>
-            <button className="btn sm ghost" onClick={sample} disabled={busy}>
-              <Icon name="sparkles" size={15} /> No files handy? Generate a sample delivery
-            </button>
-          </div>
-          <p className="tiny muted" style={{ textAlign: "center", marginTop: 8 }}>
-            Real files only — the agent reads the bytes it receives, and anything it cannot prove is flagged for review.
-          </p>
-        </>
+      {!uploaded ? (
+        <button className="drop" onClick={upload}>
+          <span className="drop-ic float"><Icon name="upload" size={30} /></span>
+          <b style={{ fontSize: 17 }}>{t("dl.drop")}</b>
+          <span className="tiny muted">{t("dl.dropSub")}</span>
+        </button>
       ) : (
         <div className="dl-grid">
           <div style={{ position: "relative" }}>
-            {scan > 0 && busy && <div key={scan} className="scanline" />}
+            {scan > 0 && <div key={scan} className="scanline" />}
             <div className="thumbs stagger">
-              {thumbs.map(({ label, kind }, i) => {
-                const c = checks[Math.min(i, checks.length - 1)] ?? "idle";
-                const bad = c === "fail";
-                const ok = checks.length > 0 && checks.every((x) => x === "pass");
+              {DELIVERY.map((k, i) => {
+                const bad = i === BAD && !fixed && (checks[failIdx] === "fail");
+                const ok = checks.every((c) => c === "pass") || (checks[failIdx] === "fail" && i !== BAD);
                 return (
-                  <div key={label + i} className={`thumb ${bad ? "bad" : ""}`}>
-                    {kind ? (
-                      <Product kind={kind} bg="#fff" />
-                    ) : (
-                      <span className="thumb-file"><Icon name={label.toLowerCase().endsWith(".txt") ? "file" : "image"} size={26} /></span>
-                    )}
-                    <span className="thumb-name" title={label}>{label.length > 16 ? `${label.slice(0, 14)}…` : label}</span>
+                  <div key={k + (i === BAD && fixed ? "v2" : "")} className={`thumb ${bad ? "bad" : ""}`}>
+                    <Product kind={k} bg={i === BAD && !fixed ? "#D9D4CC" : "#fff"} />
+                    <span className="thumb-name">IMG_{String([1, 4, 7, 9, 11, 14, 16, 19][i]).padStart(3, "0")}</span>
                     {(bad || ok) && <span className="thumb-badge" style={{ background: bad ? "var(--red)" : "var(--green)" }}>{bad ? "!" : "✓"}</span>}
                   </div>
                 );
               })}
-              {names.length > 8 && <div className="thumb more">+{names.length - 8}</div>}
+              <div className="thumb more">+12</div>
             </div>
-
-            <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
-              <button className="btn sm" disabled={busy} onClick={() => input.current?.click()}>
-                <Icon name="upload" size={15} /> {status === "revision" ? t("dl.reupload") : "Upload a new delivery"}
-              </button>
-              {status === "in_escrow" && (
-                <button className="btn sm ghost" disabled={busy} onClick={sample}>
-                  <Icon name="sparkles" size={15} /> Generate sample
-                </button>
-              )}
-            </div>
-            {error && <p className="tiny" style={{ color: "var(--red)", marginTop: 8 }}>{error}</p>}
           </div>
-
           <div className="col" style={{ gap: 8 }}>
             {order.criteria.map((c, i) => (
-              <div key={c.label} className={`chk ${checks[i] ?? "idle"}`}>
+              <div key={c.label} className={`chk ${checks[i]}`}>
                 <span className="chk-st">{checks[i] === "pass" ? "✓" : checks[i] === "fail" ? "✕" : ""}</span>
                 <span style={{ fontWeight: 700, fontSize: 14 }}>{c.label}</span>
               </div>
             ))}
-
-            {busy && <div className="tiny muted">Running the acceptance test…</div>}
-
-            {summary && !busy && (
-              <div className="tiny" style={{ fontWeight: 700 }}>
-                <Icon name="bot" size={14} /> {summary}
-              </div>
-            )}
-
+            {status === "in_escrow" && <button className="btn lav" style={{ marginTop: 6 }} onClick={verify}><Icon name="bot" size={17} /> {t("dl.run")}</button>}
             {status === "revision" && (
               <div className="note pop-in">
                 <b className="row" style={{ gap: 6 }}><Capi size={30} motion="none" mood="think" /> {t("dl.agentSays")}</b>
-                <p style={{ margin: "6px 0 10px", fontSize: 14 }}>{revisionNote ?? t("dl.agentMsg")}</p>
-                <button className="btn sm peach" style={{ background: "var(--peach)" }} disabled={busy} onClick={() => input.current?.click()}>
-                  <Icon name="upload" size={15} /> {t("dl.reupload")}
-                </button>
+                <p style={{ margin: "6px 0 10px", fontSize: 14 }}>{t("dl.agentMsg")}</p>
+                <button className="btn sm peach" style={{ background: "var(--peach)" }} onClick={reupload}><Icon name="upload" size={15} /> {t("dl.reupload")}</button>
               </div>
             )}
           </div>
         </div>
       )}
-
       <style>{`
-        .hidden-input{display:none}
         .drop{width:100%;border:3px dashed var(--ink);border-radius:20px;padding:34px 20px;background:rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;gap:8px;transition:.2s}
         .drop:hover{background:#fff;transform:scale(1.01)}
         .drop-ic{width:62px;height:62px;border-radius:18px;border:2.5px solid var(--ink);background:var(--sky);display:grid;place-items:center;box-shadow:3px 3px 0 var(--ink)}
         .dl-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px}
         .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-        .thumb{aspect-ratio:1;border:2.5px solid var(--ink);border-radius:14px;overflow:hidden;position:relative;background:#fff;display:grid;place-items:center}
+        .thumb{aspect-ratio:1;border:2.5px solid var(--ink);border-radius:14px;overflow:hidden;position:relative;background:#fff}
         .thumb.bad{box-shadow:0 0 0 3px var(--red);animation:shake .45s}
         .thumb.more{display:grid;place-items:center;font-weight:900;border-style:dashed;background:transparent}
-        .thumb-file{display:grid;place-items:center;color:var(--ink-2)}
-        .thumb-name{position:absolute;left:5px;bottom:3px;font-size:9.5px;font-weight:800;color:var(--ink-2);max-width:92%}
+        .thumb-name{position:absolute;left:5px;bottom:3px;font-size:9.5px;font-weight:800;color:#5b5280}
         .thumb-badge{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;border:2px solid var(--ink);color:#fff;font-size:11px;font-weight:900;display:grid;place-items:center;animation:popin .35s var(--spring)}
         .chk{display:flex;align-items:center;gap:10px;padding:10px 12px;border:2.5px solid var(--ink);border-radius:14px;background:var(--paper);transition:background .3s}
         .chk-st{width:24px;height:24px;border-radius:50%;border:2.5px solid var(--ink-3);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:900;flex:none}
@@ -520,13 +439,7 @@ function DeliveryPanel({ order, status, setStatus, log }: { order: Order; status
   );
 }
 
-const DELIVERY_PLACEHOLDERS: { kind: ProductKind; label: string }[] = [
-  { kind: "bottle", label: "IMG_001" }, { kind: "mug", label: "IMG_004" }, { kind: "shoe", label: "IMG_007" },
-  { kind: "bag", label: "IMG_009" }, { kind: "candle", label: "IMG_011" }, { kind: "watch", label: "IMG_014" },
-  { kind: "plant", label: "IMG_016" }, { kind: "cap", label: "IMG_019" },
-];
-
-function ReviewPanel({ order, log, onApproved, onRefunded }: { order: Order; log: (l: Log) => void; onApproved: (info?: { payoutBatchId?: string }) => void; onRefunded: () => void }) {
+function ReviewPanel({ order, log, onApproved }: { order: Order; log: (l: Log) => void; onApproved: () => void }) {
   const { t } = useI18n();
   const sleep = useSleep();
   const TOTAL = 72 * 3600;
@@ -536,57 +449,16 @@ function ReviewPanel({ order, log, onApproved, onRefunded }: { order: Order; log
   const hh = String(Math.floor(left / 3600)).padStart(2, "0"), mm = String(Math.floor((left % 3600) / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
   const C = 2 * Math.PI * 64;
 
-  /** Client approves → Payouts v1 releases the escrow to the freelancer. */
   const approve = async () => {
     try {
       setBusy(true);
-      log({ who: "release_policy", msg: "client_approved()", res: `${order.client.name.split(" ")[0]} · ${hh}h left in the window`, kind: "ai" });
-      const res = await api.release(order.id, "client");
-      if (!res.ok) {
-        log({ who: "paypal", msg: "payouts.create", res: `FAILED: ${res.error}`, kind: "err" });
-        setBusy(false);
-        return;
-      }
-      log({ who: "paypal", msg: "payouts.create", res: `batch ${res.data.payoutBatchId} · ${order.amount.toFixed(2)} ${order.currency}`, kind: "pp" });
-      await sleep(700);
-      log({ who: "webhook", msg: "PAYMENT.PAYOUTSBATCH.SUCCESS", res: `${order.id} → LUNAS ✓`, kind: "hook" });
-      onApproved({ payoutBatchId: res.data.payoutBatchId });
-    } catch {
-      setBusy(false);
-    }
-  };
-
-  /** Mediator branch: verification failed and the client wants the money back. */
-  const refund = async () => {
-    setBusy(true);
-    log({ who: "mediator", msg: "open_dispute()", res: "client contests the delivery", kind: "ai" });
-    const res = await api.refund(order.id, "delivery did not meet the agreed criteria");
-    if (!res.ok) {
-      log({ who: "paypal", msg: "payments.refund", res: `FAILED: ${res.error}`, kind: "err" });
-      setBusy(false);
-      return;
-    }
-    log({ who: "paypal", msg: "payments.refund", res: `${res.data.refund?.status ?? "COMPLETED"} · ${res.data.refund?.id ?? ""}`, kind: "pp" });
-    onRefunded();
-  };
-
-  /** Same policy the server runs on a schedule: if the window elapsed, release. */
-  const autoRelease = async () => {
-    setBusy(true);
-    log({ who: "release_policy", msg: "review_window_check()", res: `72h window · started ${new Date().toISOString().slice(0, 10)}`, kind: "ai" });
-    const res = await api.release(order.id, "auto");
-    if (!res.ok) {
-      log({ who: "release_policy", msg: "hold()", res: `FAILED: ${res.error}`, kind: "err" });
-      setBusy(false);
-      return;
-    }
-    if (!res.data.released) {
-      log({ who: "release_policy", msg: "hold()", res: res.data.reason ?? "window still open", kind: "hook" });
-      setBusy(false);
-      return;
-    }
-    log({ who: "paypal", msg: "payouts.create (auto-release)", res: `batch ${res.data.payoutBatchId}`, kind: "pp" });
-    onApproved({ payoutBatchId: res.data.payoutBatchId });
+      log({ who: "release_policy", msg: "client_approved()", res: `${order.client.name.split(" ")[0]} · ${hh}h left`, kind: "ai" });
+      await sleep(600);
+      log({ who: "paypal", msg: "payouts.create", res: `receiver: sari.w@… · ${order.amount.toFixed(2)} USD`, kind: "pp" });
+      await sleep(900);
+      log({ who: "webhook", msg: "PAYMENT.PAYOUTSBATCH.SUCCESS", res: "order → LUNAS ✓", kind: "hook" });
+      onApproved();
+    } catch {}
   };
 
   return (
@@ -609,11 +481,7 @@ function ReviewPanel({ order, log, onApproved, onRefunded }: { order: Order; log
           <p className="muted tiny" style={{ fontSize: 14 }}>{t("rev.explain")}</p>
           <div className="demo-box2">
             <div className="kbd" style={{ marginBottom: 8 }}>{t("demo.label")}</div>
-            <div className="col" style={{ gap: 8 }}>
-              <button className="btn mint" disabled={busy} onClick={approve}><Icon name="check" size={17} /> {busy ? t("rev.releasing") : t("rev.simulate")}</button>
-              <button className="btn sm ghost" disabled={busy} onClick={autoRelease}><Icon name="clock" size={15} /> Run the release policy (72h check)</button>
-              <button className="btn sm ghost" disabled={busy} onClick={refund}><Icon name="shield" size={15} /> Mediator: refund the client</button>
-            </div>
+            <button className="btn mint" disabled={busy} onClick={approve}><Icon name="check" size={17} /> {busy ? t("rev.releasing") : t("rev.simulate")}</button>
           </div>
         </div>
       </div>
@@ -622,25 +490,290 @@ function ReviewPanel({ order, log, onApproved, onRefunded }: { order: Order; log
   );
 }
 
-function PaidPanel({ order, slam, payoutBatchId }: { order: Order; slam: boolean; payoutBatchId?: string }) {
-  const { t, money } = useI18n();
+function PaidPanel({ order, slam, refundInfo }: { order: Order; slam: boolean; refundInfo?: { percent: number; id: string; status: string; sim: boolean } | null }) {
+  const { t, money, date } = useI18n();
+  const { me } = useMe();
+  const certRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const download = async () => {
+    if (!certRef.current || busy) return;
+    setBusy(true);
+    try {
+      const { toPng } = await import("html-to-image");
+      const url = await toPng(certRef.current, { pixelRatio: 2, backgroundColor: "#FFFEFA", cacheBust: true });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lunas-certificate-${order.id}.png`;
+      a.click();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2600);
+    } catch {}
+    setBusy(false);
+  };
+
+  const rows: [string, string][] = [
+    [t("try.r.to"), `${me.name} · ${me.city}, ${me.country}`],
+    [t("try.r.from"), `${order.client.name} · ${order.client.city}, ${order.client.country}`],
+    [t("try.r.check"), `${order.criteria.length} / ${order.criteria.length} ✓`],
+    [t("cert.date"), date(new Date().toISOString(), { day: "numeric", month: "long", year: "numeric" })],
+  ];
+
   return (
     <div className="card pad rise" style={{ background: "var(--mint-l)" }}>
       <PanelHead color="var(--mint)" icon="heart" title={t("paid.t")} sub={t("paid.b", { amount: money(order.amount) })} />
-      <div className="row wrap" style={{ gap: 20, justifyContent: "center", alignItems: "flex-end" }}>
-        <div className={`card receipt ${slam ? "shake" : ""}`} style={{ animationDelay: ".25s" }}>
-          <div className="kbd">{t("try.receipt")} · {order.id}</div>
-          <div className="display" style={{ fontSize: 38, margin: "8px 0 12px" }}>{money(order.amount)}</div>
-          {[[t("try.r.to"), "Sari W. · Yogyakarta"], [t("try.r.from"), `${order.client.name} · ${order.client.city}`], [t("try.r.check"), `${order.criteria.length} / ${order.criteria.length} ✓`], ["Payout batch", payoutBatchId ?? "—"]].map(([a, b]) => (
-            <div key={a} className="row between" style={{ padding: "7px 0", borderBottom: "2px dashed rgba(35,25,66,.15)", fontSize: 13.5, gap: 10 }}>
-              <span className="muted">{a}</span><b style={{ textAlign: "right" }}>{b}</b>
-            </div>
-          ))}
-          <div className={`stamp ${slam ? "slam" : ""}`} style={{ right: 12, top: 62 }}>LUNAS<small>{t("stamp.sub")}</small></div>
+      {refundInfo && (
+        <div className="row wrap voidnote" style={{ gap: 10, marginBottom: 14 }}>
+          <Icon name="refund" size={18} />
+          <b>{t("med.voided", { p: refundInfo.percent })}</b>
+          <span className="mono tiny">refund {refundInfo.status} · {refundInfo.id}{refundInfo.sim ? " · demo" : ""}</span>
         </div>
-        <Capi size={100} mood="love" motion={slam ? "jump" : "bob"} />
+      )}
+      <div className="row wrap" style={{ gap: 22, justifyContent: "center", alignItems: "center" }}>
+        <div ref={certRef} className={`cert ${slam ? "shake" : ""}`} style={{ animationDelay: ".25s" }}>
+          <span className="cc tl" /><span className="cc tr" /><span className="cc bl" /><span className="cc br" />
+          <div className="col" style={{ alignItems: "center", gap: 3 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/emblem.png" alt="" style={{ width: 46, height: 46, objectFit: "contain" }} />
+            <span className="kbd">LUNAS ESCROW · {order.id}</span>
+            <b className="display" style={{ fontSize: 25 }}>{t("cert.title")}</b>
+            <span className="tiny muted" style={{ fontWeight: 700 }}>{t("cert.no")} {order.id}</span>
+          </div>
+          <div className="display" style={{ fontSize: 46, textAlign: "center", margin: "10px 0 4px" }}>{money(order.amount)}</div>
+          <div className="col" style={{ margin: "4px 0 10px" }}>
+            {rows.map(([a, b]) => (
+              <div key={a} className="row between" style={{ padding: "7px 2px", borderBottom: "2px dashed rgba(35,25,66,.18)", fontSize: 13.5, gap: 12 }}>
+                <span className="muted">{a}</span><b style={{ textAlign: "right" }}>{b}</b>
+              </div>
+            ))}
+          </div>
+          <div className="tiny" style={{ textAlign: "center", fontWeight: 800 }}>✓ {t("cert.verified", { n: order.criteria.length })}</div>
+          <div className="row between" style={{ alignItems: "flex-end", marginTop: 14, gap: 10 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/wax-seal.png" alt="" className="cert-wax" />
+            <div className="col" style={{ alignItems: "center", gap: 1, paddingBottom: 6 }}>
+              <span className="mono tiny" style={{ opacity: .7 }}>5UXD2E8A7EBQJ</span>
+              <span className="tiny muted" style={{ fontWeight: 800 }}>Payout ID</span>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/stamp-seal.png" alt="LUNAS" className={`cert-stamp ${slam ? "" : "still"}`} />
+          </div>
+        </div>
+        <div className="col" style={{ gap: 12, alignItems: "center", minWidth: 160 }}>
+          <CapiPose pose={slam ? "jump" : "idle"} size={104} className={slam ? "capi-pop" : "capi-float"} />
+          <button className="btn mint" onClick={download} disabled={busy}>
+            <Icon name="download" size={16} /> {t("cert.download")}
+          </button>
+          <span className="tiny muted" style={{ fontWeight: 700, textAlign: "center" }}>{t("cert.hint")}</span>
+        </div>
       </div>
-      <style>{`.receipt{width:min(360px,100%);padding:22px;position:relative;background:#FFFEFA}`}</style>
+      <Toast show={saved}>{t("cert.toast")}</Toast>
+    </div>
+  );
+}
+
+type Verdict = {
+  decision: "release" | "refund_partial" | "refund_full" | "escalate";
+  percent: number; confidence: number; reasons: string[]; evidence: string[]; nextStep: string; source: "llm" | "local";
+};
+
+/* fixed light palette so the verdict card stays readable on every theme */
+const DEC_COLOR: Record<Verdict["decision"], string> = {
+  release: "#E4F7EC", refund_partial: "#FFF3C9", refund_full: "#FFE1DE", escalate: "#ECE6FF",
+};
+
+function MediatorPanel({ order, log, capture, onRefunded }: {
+  order: Order; log: (l: Log) => void; capture: string;
+  onRefunded: (r: { percent: number; id: string; status: string; sim: boolean }) => void;
+}) {
+  const { t, money, lang } = useI18n();
+  const { me } = useMe();
+  const [claim, setClaim] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [v, setV] = useState<Verdict | null>(null);
+  const [capId, setCapId] = useState(capture);
+  const [paying, setPaying] = useState(false);
+  const [done, setDone] = useState<{ id: string; status: string; sim: boolean } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (capture) setCapId(capture); }, [capture]);
+
+  const ask = async () => {
+    if (claim.trim().length < 6) { setErr(t("med.short")); return; }
+    setErr(null); setBusy(true); setDone(null);
+    log({ who: "mediator_agent", msg: "open_dispute()", res: `${claim.trim().split(/\s+/).length} words · ${order.criteria.length} criteria on file`, kind: "ai" });
+    try {
+      const r = await fetch("/api/agent/mediate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order.id, claim, lang, amount: order.amount, attempts: 1, late: false, hoursSinceDelivery: 20,
+          criteria: order.criteria.map((c) => ({ label: c.label, pass: true })),
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "mediate failed");
+      setV(j as Verdict);
+      log({ who: "mediator_agent", msg: `verdict: ${j.decision}`, res: `${j.percent}% → client · confidence ${(Number(j.confidence) * 100).toFixed(0)}% · ${j.source}`, kind: "ai" });
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+      log({ who: "mediator_agent", msg: "verdict.error", res: String(e).slice(0, 80), kind: "err" });
+    }
+    setBusy(false);
+  };
+
+  const refundAmount = v ? Math.round(order.amount * v.percent) / 100 : 0;
+  const realCapture = /^[A-Za-z0-9_-]{10,}$/.test(capId.trim());
+
+  const execute = async () => {
+    if (!v || paying) return;
+    setPaying(true); setErr(null);
+    log({
+      who: "paypal", msg: "captures.refund",
+      res: realCapture
+        ? `capture: ${capId.trim().slice(0, 12)}… · ${v.percent >= 100 ? "full capture amount" : `${refundAmount.toFixed(2)} ${order.currency}`}`
+        : "demo mode · no capture on record",
+      kind: "pp",
+    });
+    if (realCapture) {
+      try {
+        const r = await fetch("/api/paypal/refund", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            captureId: capId.trim(), orderId: order.id,
+            amount: v.percent >= 100 ? undefined : refundAmount,
+            currency: order.currency, reason: v.decision, note: `Lunas mediator: ${v.nextStep}`.slice(0, 240),
+          }),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.refundId) throw new Error(j.error || "captures.refund failed");
+        setDone({ id: j.refundId, status: j.status, sim: false });
+        log({ who: "paypal", msg: `refund ${j.status}`, res: `id: ${j.refundId} · ${v.percent >= 100 ? "full capture refunded" : `${refundAmount.toFixed(2)} ${order.currency}`}`, kind: "pp" });
+        log({ who: "webhook", msg: "PAYMENT.CAPTURE.REFUNDED", res: `${v.percent}% → client · certificate voided`, kind: "hook" });
+        onRefunded({ percent: v.percent, id: j.refundId, status: j.status, sim: false });
+      } catch (e) {
+        const m = String(e instanceof Error ? e.message : e);
+        setErr(`${t("med.err")}: ${m}`);
+        log({ who: "paypal", msg: "refund.error", res: m.slice(0, 90), kind: "err" });
+      }
+    } else {
+      await new Promise((r) => setTimeout(r, 900));
+      const id = `SIM-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+      setDone({ id, status: "COMPLETED", sim: true });
+      log({ who: "paypal", msg: "refund COMPLETED (simulated)", res: `id: ${id} · ${refundAmount.toFixed(2)} ${order.currency}`, kind: "pp" });
+      onRefunded({ percent: v.percent, id, status: "COMPLETED", sim: true });
+    }
+    setPaying(false);
+  };
+
+  return (
+    <div className="card pad rise">
+      <PanelHead color="var(--peach)" icon="scale" title={t("med.t")} sub={t("med.b")} />
+      <div className="row wrap" style={{ gap: 6, marginBottom: 10 }}>
+        <span className="kbd">{t("med.chips")}</span>
+        {[1, 2, 3, 4].map((n) => (
+          <button key={n} className="chip" onClick={() => { setClaim(t(`med.chip.${n}`)); setV(null); setDone(null); setErr(null); }}>
+            {t(`med.chip.${n}`).slice(0, 46)}{t(`med.chip.${n}`).length > 46 ? "…" : ""}
+          </button>
+        ))}
+      </div>
+      <textarea className="med-ta" rows={3} value={claim} placeholder={t("med.ph")}
+        onChange={(e) => { setClaim(e.target.value); if (err) setErr(null); }} />
+      <div className="row wrap between" style={{ gap: 10, marginTop: 10 }}>
+        <button className="btn peach" style={{ background: "var(--peach)" }} disabled={busy} onClick={ask}>
+          {busy ? <><span className="spin" style={{ width: 16, height: 16, border: "2.5px solid var(--ink)", borderTopColor: "transparent", borderRadius: "50%" }} /> {t("med.thinking")}</>
+                : <><Icon name="scale" size={17} /> {t("med.ask")}</>}
+        </button>
+        {v && <span className="tiny muted row" style={{ gap: 6, fontWeight: 800 }}>
+          <Icon name={v.source === "llm" ? "sparkles" : "bot"} size={14} /> {v.source === "llm" ? t("med.src.llm") : t("med.src.local")}
+        </span>}
+      </div>
+      {err && <div className="med-err">{err}</div>}
+
+      {v && (
+        <div className="med-verdict pop-in" style={{ background: DEC_COLOR[v.decision] }}>
+          <div className="row wrap between" style={{ gap: 12 }}>
+            <div className="row" style={{ gap: 12, alignItems: "center" }}>
+              <span className="med-pct">{v.percent}%</span>
+              <div>
+                <b className="display" style={{ fontSize: 19 }}>{t(`med.dec.${v.decision}`)}</b>
+                <div className="tiny" style={{ fontWeight: 800, opacity: .75 }}>
+                  {v.percent > 0 ? t("med.amount", { p: v.percent, amt: money(refundAmount) }) : money(order.amount)} → {v.decision === "release" ? me.name.split(" ")[0] : order.client.name.split(" ")[0]}
+                </div>
+              </div>
+            </div>
+            <div className="col" style={{ gap: 4, minWidth: 150 }}>
+              <span className="tiny" style={{ fontWeight: 800 }}>{t("med.conf")} · {(v.confidence * 100).toFixed(0)}%</span>
+              <span className="med-bar"><i style={{ width: `${Math.round(v.confidence * 100)}%` }} /></span>
+            </div>
+          </div>
+
+          <div className="med-cols">
+            <div className="col" style={{ gap: 6 }}>
+              <span className="kbd">{t("med.why")}</span>
+              <ul className="med-list">{v.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+            </div>
+            <div className="col" style={{ gap: 6 }}>
+              <span className="kbd">{t("med.signals")}</span>
+              <div className="row wrap" style={{ gap: 5 }}>
+                {v.evidence.map((e, i) => <code key={i} className="sig">{e}</code>)}
+              </div>
+            </div>
+          </div>
+
+          <div className="med-next"><Icon name="right" size={15} /> <span>{v.nextStep}</span></div>
+
+          {v.decision === "refund_partial" || v.decision === "refund_full" ? (
+            <div className="med-pay">
+              <label className="tiny row" style={{ gap: 6, fontWeight: 800 }}>
+                <Icon name="wallet" size={14} /> {t("med.capture")}
+                <input className="med-in mono" value={capId} placeholder="7YY369168N8549901"
+                  onChange={(e) => setCapId(e.target.value)} />
+              </label>
+              {!realCapture && <span className="tiny muted" style={{ fontWeight: 700 }}>{t("med.nocap")}</span>}
+              {done ? (
+                <div className="row wrap" style={{ gap: 8, fontWeight: 800 }}>
+                  <Icon name="check" size={16} /> {t("med.done", { status: done.status, id: done.id })}
+                  {done.sim && <span className="kbd">demo</span>}
+                </div>
+              ) : (
+                <button className="btn sm paypal" disabled={paying} onClick={execute}>
+                  {paying ? <><span className="spin" style={{ width: 15, height: 15, border: "2.5px solid var(--ink)", borderTopColor: "transparent", borderRadius: "50%" }} /> {t("med.executing")}</>
+                          : <><Icon name="refund" size={16} /> {realCapture ? t("med.exec") : t("med.simulate")}</>}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="med-pay tiny" style={{ fontWeight: 800 }}>
+              <Icon name={v.decision === "escalate" ? "lock" : "check"} size={15} />
+              {v.decision === "escalate" ? t("med.frozen") : t("med.next")}
+            </div>
+          )}
+        </div>
+      )}
+
+      <style>{`
+        .chip{border:2.5px solid var(--ink);border-radius:999px;background:var(--paper);padding:6px 11px;font:700 12px/1.2 var(--font-body);cursor:pointer;transition:.18s var(--spring);max-width:100%;text-align:left}
+        .chip:hover{background:var(--lemon);transform:translateY(-2px);box-shadow:2px 2px 0 var(--ink)}
+        .med-ta{width:100%;border:2.5px solid var(--ink);border-radius:14px;background:var(--paper);padding:12px 14px;font:600 14.5px/1.55 var(--font-body);color:var(--ink);resize:vertical}
+        .med-ta:focus{outline:none;background:#fff;box-shadow:3px 3px 0 var(--ink)}
+        .med-err{margin-top:10px;padding:10px 12px;border:2.5px solid var(--ink);border-left-width:8px;border-left-color:var(--red);border-radius:12px;background:var(--red-l);font-weight:800;font-size:13.5px}
+        .med-verdict{margin-top:14px;border:2.5px solid #231942;border-radius:18px;padding:16px;color:#231942;box-shadow:4px 4px 0 rgba(35,25,66,.22)}
+        .med-verdict .muted,.med-verdict .tiny{color:#5b5280}
+        .med-verdict .kbd,.med-pay .kbd{color:#5b5280}
+        .med-pct{font-family:var(--font-display);font-size:40px;font-weight:700;line-height:1;border:2.5px solid #231942;border-radius:16px;background:#fff;color:#231942;padding:6px 12px;box-shadow:3px 3px 0 #231942}
+        .med-bar{display:block;height:12px;border:2.5px solid #231942;border-radius:999px;background:#fff;overflow:hidden}
+        .med-bar i{display:block;height:100%;background:#2E9E6B;border-right:2.5px solid #231942;transition:width .6s var(--ease)}
+        .med-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+        .med-list{margin:0;padding-left:18px;font-size:13.5px;line-height:1.6;font-weight:600}
+        .sig{font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace;border:2px solid #231942;border-radius:8px;background:rgba(255,255,255,.8);color:#231942;padding:2px 6px}
+        .med-next{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:11px 13px;border:2.5px dashed #231942;border-radius:14px;background:rgba(255,255,255,.6);color:#231942;font-weight:800;font-size:14px}
+        .med-pay{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px;padding-top:12px;border-top:2.5px dashed rgba(35,25,66,.3);color:#231942}
+        .med-pay .muted{color:#5b5280}
+        .med-in{border:2.5px solid #231942;border-radius:10px;background:#fff;color:#231942;padding:6px 9px;font-size:12px;min-width:190px;flex:1}
+        .voidnote{border:2.5px solid #231942;border-left-width:8px;border-left-color:#D93025;border-radius:14px;background:#FFE1DE;color:#231942;padding:11px 13px;font-size:14px}
+        .voidnote .mono{color:#8a2019}
+        @media (max-width:700px){.med-cols{grid-template-columns:1fr}}
+      `}</style>
     </div>
   );
 }
@@ -651,7 +784,7 @@ function AgentLog({ logs }: { logs: Log[] }) {
   useEffect(() => { ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: "smooth" }); }, [logs.length]);
   const color = { ai: "#7FE3B5", pp: "#8CC4FF", hook: "#FFD84D", err: "#FF9A90" };
   return (
-    <div className="card" style={{ background: "var(--ink)", color: "#D7DCEB", padding: 16 }}>
+    <div className="card" style={{ background: "#231942", color: "#D7DCEB", padding: 16 }}>
       <div className="row between" style={{ marginBottom: 12 }}>
         <b className="display" style={{ color: "#fff", fontSize: 17 }}>{t("log.title")}</b>
         <span className="row tiny" style={{ gap: 6, color: "#7FE3B5", fontWeight: 800 }}><span className="live-dot" /> live</span>

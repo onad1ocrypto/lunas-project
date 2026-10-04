@@ -4,38 +4,19 @@ import Link from "next/link";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { LANGS, useI18n } from "@/lib/i18n";
 import { THEMES, useTheme } from "@/lib/theme";
-import { ME, STATUS_STYLE, type Person, type ProductKind, type Status } from "@/lib/data";
+import { type Person, type ProductKind, type Status } from "@/lib/data";
+import { initialsOf, ME_COLOR, useMe } from "@/lib/me";
 import { Icon } from "./Icon";
 
 /* ---------------- Logo ---------------- */
-/** Top-corner lockup: gold LUNAS mark + wordmark, drawn from the supplied artwork. */
-export function Logo({ href = "/", size = 38 }: { href?: string; size?: number }) {
+/* Top-corner mark: the gold LUNAS lockup (crest + wordmark), 56px tall instead of the
+   old 44px badge so it stays readable. Only this component and its asset changed. */
+export function Logo({ href = "/", size = 56 }: { href?: string; size?: number }) {
   return (
     <Link href={href} className="logo-lockup wiggle" aria-label="Lunas">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/brand/lunas-lockup-640.png"
-        alt="Lunas"
-        width={640}
-        height={270}
-        style={{ height: size, width: "auto", display: "block" }}
-      />
+      <img src="/brand/logo-lockup.png" alt="Lunas" width={700} height={295} style={{ height: size, width: "auto", display: "block" }} />
     </Link>
-  );
-}
-
-/** Emblem-only variant (favicon-sized spots, receipts, loading screens). */
-export function Emblem({ size = 48, className = "" }: { size?: number; className?: string }) {
-  return (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <img
-      src="/brand/lunas-emblem.png"
-      alt="Lunas"
-      width={512}
-      height={512}
-      className={className}
-      style={{ width: size, height: size, display: "block" }}
-    />
   );
 }
 
@@ -86,6 +67,7 @@ export function ProfileMenu() {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [bye, setBye] = useState(false);
+  const { me } = useMe();
   const signOut = () => { setOpen(false); setBye(true); setTimeout(() => setBye(false), 2600); };
   return (
     <span className="top-avatar" style={{ position: "relative", display: "inline-block" }}>
@@ -95,7 +77,7 @@ export function ProfileMenu() {
         aria-expanded={open}
         style={{ borderRadius: "50%", lineHeight: 0, boxShadow: open ? "0 0 0 3px var(--lemon)" : "none", transition: "box-shadow .2s" }}
       >
-        <Avatar p={ME} size={38} />
+        <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={38} />
       </button>
       {open && (
         <>
@@ -105,14 +87,14 @@ export function ProfileMenu() {
             style={{ position: "absolute", right: 0, top: "calc(100% + 10px)", zIndex: 41, width: 252, padding: 8, display: "flex", flexDirection: "column", gap: 2 }}
           >
             <div className="row" style={{ gap: 10, padding: "8px 10px 12px", borderBottom: "2px dashed var(--ink-3)", marginBottom: 4 }}>
-              <Avatar p={ME} size={40} />
+              <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={40} />
               <div className="col" style={{ gap: 2 }}>
-                <b style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>{ME.name}</b>
-                <span className="tiny muted">@{ME.handle} · {ME.city}</span>
+                <b style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>{me.name}</b>
+                <span className="tiny muted">@{me.handle} · {me.city}</span>
               </div>
             </div>
             <Link className="mi" href="/profile" onClick={() => setOpen(false)}><Icon name="user" size={16} /> {t("me.menu.profile")}</Link>
-            <Link className="mi" href="/to/sari" onClick={() => setOpen(false)}><Icon name="link" size={16} /> {t("me.menu.public")}</Link>
+            <Link className="mi" href={`/to/${me.handle}`} onClick={() => setOpen(false)}><Icon name="link" size={16} /> {t("me.menu.public")}</Link>
             <Link className="mi" href="/profile#paypal" onClick={() => setOpen(false)}><Icon name="wallet" size={16} /> {t("me.menu.paypal")}</Link>
             <button className="mi" style={{ color: "var(--red)" }} onClick={signOut}><Icon name="x" size={16} /> {t("me.menu.signout")}</button>
           </div>
@@ -120,6 +102,20 @@ export function ProfileMenu() {
       )}
       <Toast show={bye}>{t("me.toast.bye")}</Toast>
     </span>
+  );
+}
+
+/* ---------------- Capi pose sprites (generated art) ---------------- */
+export function CapiPose({ pose, size = 90, className = "", style }: { pose: "idle" | "jump" | "slam" | "wink"; size?: number; className?: string; style?: CSSProperties }) {
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src={`/brand/capi-${pose}.png`}
+      alt=""
+      aria-hidden
+      className={className}
+      style={{ width: size, height: size, objectFit: "contain", display: "block", ...style }}
+    />
   );
 }
 
@@ -180,10 +176,9 @@ export function Country({ code }: { code: string }) {
 /* ---------------- Status badge ---------------- */
 export function StatusBadge({ s }: { s: Status }) {
   const { t } = useI18n();
-  const st = STATUS_STYLE[s];
   return (
-    <span className="badge" style={{ background: st.bg, color: st.fg, borderColor: "currentColor" }}>
-      <span className="dot" /> <span style={{ color: "var(--on-bright)" }}>{t(`status.${s}`)}</span>
+    <span className={`badge st-${s}`}>
+      <span className="dot" /> {t(`status.${s}`)}
     </span>
   );
 }

@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
-import { ME, NEEDS_ME, ORDERS } from "@/lib/data";
-import { Capi } from "@/components/Capi";
+import { NEEDS_ME, ORDERS } from "@/lib/data";
+import { useMe } from "@/lib/me";
 import { Icon } from "@/components/Icon";
-import { Avatar, Country, StatusBadge, Toast } from "@/components/ui";
+import {Avatar, Country, StatusBadge, Toast, CapiPose } from "@/components/ui";
 
 const WEEKS = [120, 210, 90, 285, 160, 330, 240, 375];
 
 export default function Dashboard() {
   const { t, money, date } = useI18n();
+  const { me } = useMe();
   const [copied, setCopied] = useState(false);
 
   const held = ORDERS.filter((o) => ["in_escrow", "verifying", "revision", "review"].includes(o.status)).reduce((s, o) => s + o.amount, 0);
@@ -21,7 +22,7 @@ export default function Dashboard() {
   const max = Math.max(...WEEKS);
 
   const copyLink = async () => {
-    try { await navigator.clipboard.writeText("https://lunas.app/to/sari"); } catch {}
+    try { await navigator.clipboard.writeText(`https://lunas.app/to/${me.handle}`); } catch {}
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -47,7 +48,7 @@ export default function Dashboard() {
         <div className="grow">
           <div className="kbd">{date("2026-11-03", { weekday: "long", day: "numeric", month: "long" })}</div>
           <h1 style={{ fontSize: "clamp(28px,3.4vw,40px)", marginTop: 6 }}>
-            {t("dash.hi", { name: ME.name.split(" ")[0] })} <span className="wave">👋</span>
+            {t("dash.hi", { name: me.name.split(" ")[0] })} <span className="wave">👋</span>
           </h1>
           <p style={{ marginTop: 8, fontWeight: 700, maxWidth: 520 }}>{t("dash.summary", { r: requests, w: todo.length - requests })}</p>
           <div className="row wrap" style={{ gap: 10, marginTop: 18 }}>
@@ -57,7 +58,7 @@ export default function Dashboard() {
         </div>
         <div style={{ position: "relative" }}>
           <div className="speech">{t("dash.capiSays")}</div>
-          <Capi size={130} mood="happy" />
+          <CapiPose pose="jump" size={138} className="capi-float" />
         </div>
       </section>
 

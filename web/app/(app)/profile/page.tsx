@@ -3,13 +3,17 @@
 import { useState } from "react";
 import { LANGS, useI18n } from "@/lib/i18n";
 import { THEMES, useTheme } from "@/lib/theme";
-import { ME, ORDERS } from "@/lib/data";
+import { ORDERS } from "@/lib/data";
+import { initialsOf, ME_COLOR, useMe, type MeProfile } from "@/lib/me";
 import { Icon } from "@/components/Icon";
 import { Avatar, Country, Kicker, Toast } from "@/components/ui";
 
 export default function ProfilePage() {
   const { t, money, lang, setLang } = useI18n();
   const { theme, setTheme } = useTheme();
+  const { me, setMe } = useMe();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<MeProfile>(me);
   const [toast, setToast] = useState("");
   const ping = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2600); };
 
@@ -20,6 +24,22 @@ export default function ProfilePage() {
     { v: money(earned), l: t("me.stats.earned"), c: "var(--lemon-l)", icon: "wallet" },
     { v: "4.9 ★", l: t("me.stats.rating"), c: "var(--pink-l)", icon: "star" },
   ];
+
+  const TAG_COLORS = ["var(--pink-l)", "var(--sky-l)", "var(--lemon-l)", "var(--mint-l)"];
+  const save = () => {
+    const clean: MeProfile = {
+      name: draft.name.trim() || me.name,
+      handle: draft.handle.trim().toLowerCase().replace(/^@/, "").replace(/[^a-z0-9-_]+/g, "-").replace(/^-+|-+$/g, "") || me.handle,
+      city: draft.city.trim() || me.city,
+      country: (draft.country.trim() || me.country).toUpperCase().slice(0, 2),
+      bio: draft.bio.trim(),
+      tags: draft.tags.map((s) => s.trim()).filter(Boolean).slice(0, 6),
+    };
+    setMe(clean);
+    setDraft(clean);
+    setEditing(false);
+    ping(t("me.saved"));
+  };
 
   return (
     <div className="col" style={{ gap: 22 }}>
@@ -39,24 +59,77 @@ export default function ProfilePage() {
         />
         <div style={{ padding: "0 24px 22px", marginTop: -46, display: "flex", gap: 18, alignItems: "flex-end", flexWrap: "wrap" }}>
           <span style={{ border: "3px solid var(--ink)", borderRadius: "50%", boxShadow: "4px 4px 0 var(--ink)", lineHeight: 0 }}>
-            <Avatar p={ME} size={92} />
+            <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={92} />
           </span>
           <div className="col" style={{ gap: 6, paddingBottom: 4 }}>
             <div className="row wrap" style={{ gap: 10 }}>
-              <h2 style={{ fontSize: 26 }}>{ME.name}</h2>
+              <h2 style={{ fontSize: 26 }}>{me.name}</h2>
               <span className="badge" style={{ background: "var(--lemon)" }}><Icon name="star" size={12} /> PRO</span>
             </div>
             <div className="row wrap muted" style={{ gap: 8, fontWeight: 700 }}>
-              <span>@{ME.handle}</span>
-              <Country code={ME.country} />
-              <span>· {ME.city}</span>
+              <span>@{me.handle}</span>
+              <Country code={me.country} />
+              <span>· {me.city}</span>
             </div>
             <span className="tiny muted">{t("me.since")} · {t("me.langs")}</span>
           </div>
-          <button className="btn" style={{ marginLeft: "auto" }} onClick={() => ping(t("me.toast.edit"))}>
-            <Icon name="sparkles" size={16} /> {t("me.edit")}
-          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/wax-seal.png" alt="" style={{ width: 74, transform: "rotate(8deg)", marginLeft: "auto", filter: "drop-shadow(2px 3px 0 rgba(35,25,66,.18))" }} />
+          {!editing && (
+            <button className="btn lemon" onClick={() => { setDraft(me); setEditing(true); }}>
+              <Icon name="sparkles" size={16} /> {t("me.edit")}
+            </button>
+          )}
         </div>
+        {!editing && me.bio && (
+          <div style={{ padding: "0 24px 20px" }}>
+            <p className="muted" style={{ fontWeight: 700, lineHeight: 1.6, maxWidth: 640 }}>{me.bio}</p>
+            {me.tags.length > 0 && (
+              <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
+                {me.tags.map((s, i) => (
+                  <span key={s + i} className="chip" style={{ background: TAG_COLORS[i % TAG_COLORS.length] }}>{s}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {editing && (
+          <div className="col pop-in" style={{ gap: 14, padding: "4px 24px 24px", borderTop: "2.5px dashed var(--ink-3)" }}>
+            <b style={{ fontFamily: "var(--font-display)", fontSize: 18, paddingTop: 14 }}>{t("me.edit")}</b>
+            <div className="pub-form">
+              <div className="field">
+                <label htmlFor="f-name">{t("me.f.name")}</label>
+                <input id="f-name" className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="f-handle">{t("me.f.handle")}</label>
+                <input id="f-handle" className="input" value={draft.handle} onChange={(e) => setDraft({ ...draft, handle: e.target.value })} />
+              </div>
+            </div>
+            <div className="pub-form">
+              <div className="field">
+                <label htmlFor="f-city">{t("me.f.city")}</label>
+                <input id="f-city" className="input" value={draft.city} onChange={(e) => setDraft({ ...draft, city: e.target.value })} />
+              </div>
+              <div className="field">
+                <label htmlFor="f-country">{t("me.f.country")}</label>
+                <input id="f-country" className="input" maxLength={2} value={draft.country} onChange={(e) => setDraft({ ...draft, country: e.target.value.toUpperCase() })} />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="f-bio">{t("me.f.bio")}</label>
+              <textarea id="f-bio" className="textarea" value={draft.bio} onChange={(e) => setDraft({ ...draft, bio: e.target.value })} />
+            </div>
+            <div className="field">
+              <label htmlFor="f-tags">{t("me.f.tags")}</label>
+              <input id="f-tags" className="input" value={draft.tags.join(", ")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
+            </div>
+            <div className="row wrap" style={{ gap: 10 }}>
+              <button className="btn lemon" onClick={save}><Icon name="check" size={16} /> {t("me.save")}</button>
+              <button className="btn" onClick={() => setEditing(false)}><Icon name="x" size={15} /> {t("me.cancel")}</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* stats */}
@@ -130,7 +203,7 @@ export default function ProfilePage() {
             </span>
           </div>
           <p className="tiny muted" style={{ fontWeight: 700 }}>{t("me.paypal.body")}</p>
-          <span className="mono tiny" style={{ opacity: .8 }}>sb-sari@personal.example · sandbox</span>
+          <span className="mono tiny" style={{ opacity: .8 }}>sb-{me.handle}@personal.example · sandbox</span>
         </div>
         <div className="row" style={{ gap: 10 }}>
           <button className="btn sm" onClick={() => ping(t("me.toast.edit"))}><Icon name="refresh" size={15} /> {t("me.paypal.manage")}</button>
