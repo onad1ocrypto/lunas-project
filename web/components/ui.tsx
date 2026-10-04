@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { LANGS, useI18n } from "@/lib/i18n";
 import { THEMES, useTheme } from "@/lib/theme";
@@ -65,10 +66,12 @@ export function ThemeSwitch() {
 /* ---------------- Profile menu (avatar dropdown) ---------------- */
 export function ProfileMenu() {
   const { t } = useI18n();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [bye, setBye] = useState(false);
-  const { me } = useMe();
-  const signOut = () => { setOpen(false); setBye(true); setTimeout(() => setBye(false), 2600); };
+  const { me, signOut } = useMe();
+  /* Sign out now actually signs out: the saved demo profile is dropped and the visitor
+     is returned to the landing page, which shows the "signed out" confirmation. */
+  const handleSignOut = () => { setOpen(false); signOut(); router.push("/"); };
   return (
     <span className="top-avatar" style={{ position: "relative", display: "inline-block" }}>
       <button
@@ -96,11 +99,10 @@ export function ProfileMenu() {
             <Link className="mi" href="/profile" onClick={() => setOpen(false)}><Icon name="user" size={16} /> {t("me.menu.profile")}</Link>
             <Link className="mi" href={`/to/${me.handle}`} onClick={() => setOpen(false)}><Icon name="link" size={16} /> {t("me.menu.public")}</Link>
             <Link className="mi" href="/profile#paypal" onClick={() => setOpen(false)}><Icon name="wallet" size={16} /> {t("me.menu.paypal")}</Link>
-            <button className="mi" style={{ color: "var(--red)" }} onClick={signOut}><Icon name="x" size={16} /> {t("me.menu.signout")}</button>
+            <button className="mi" style={{ color: "var(--red)" }} onClick={handleSignOut}><Icon name="x" size={16} /> {t("me.menu.signout")}</button>
           </div>
         </>
       )}
-      <Toast show={bye}>{t("me.toast.bye")}</Toast>
     </span>
   );
 }

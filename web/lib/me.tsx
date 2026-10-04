@@ -27,11 +27,15 @@ const STORAGE_KEY = "lunas.me";
 interface Ctx {
   me: MeProfile;
   setMe: (p: MeProfile) => void;
+  signOut: () => void;
+  justSignedOut: boolean;
+  clearJustSignedOut: () => void;
 }
 const MeCtx = createContext<Ctx | null>(null);
 
 export function MeProvider({ children }: { children: ReactNode }) {
   const [me, setMeState] = useState<MeProfile>(ME_DEFAULT);
+  const [justSignedOut, setJustSignedOut] = useState(false);
 
   useEffect(() => {
     try {
@@ -58,7 +62,26 @@ export function MeProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo<Ctx>(() => ({ me, setMe }), [me, setMe]);
+  /* Sign out for real: this demo keeps the identity only in localStorage, so signing
+     out means forgetting the saved profile (name/handle/city/bio/tags edits included)
+     and reporting the event so the UI can confirm it. Account-less by design: there is
+     nothing else to revoke. */
+  const signOut = useCallback(() => {
+    setMeState(ME_DEFAULT);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* storage unavailable -> nothing saved to clear */
+    }
+    setJustSignedOut(true);
+  }, []);
+
+  const clearJustSignedOut = useCallback(() => setJustSignedOut(false), []);
+
+  const value = useMemo<Ctx>(
+    () => ({ me, setMe, signOut, justSignedOut, clearJustSignedOut }),
+    [me, setMe, signOut, justSignedOut, clearJustSignedOut]
+  );
   return <MeCtx.Provider value={value}>{children}</MeCtx.Provider>;
 }
 

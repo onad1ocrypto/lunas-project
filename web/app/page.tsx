@@ -7,15 +7,25 @@ import { useMe } from "@/lib/me";
 import { Capi } from "@/components/Capi";
 import { CapiPose } from "@/components/ui";
 import { Icon } from "@/components/Icon";
-import { Confetti, Kicker, LangSwitch, Logo, ThemeSwitch } from "@/components/ui";
+import { Confetti, Kicker, LangSwitch, Logo, ThemeSwitch, Toast } from "@/components/ui";
 
 const MARQ_KEYS = Array.from({ length: 10 }, (_, i) => `marq.${i + 1}`);
 
 export default function Landing() {
   const { t, money } = useI18n();
-  const { me } = useMe();
+  const { me, justSignedOut, clearJustSignedOut } = useMe();
   const [stamped, setStamped] = useState(0);
   const [pairIdx, setPairIdx] = useState(0);
+  const [bye, setBye] = useState(false);
+
+  /* Arriving here right after "Sign out": confirm it with the toast, then forget the flag. */
+  useEffect(() => {
+    if (!justSignedOut) return;
+    setBye(true);
+    const id = setTimeout(() => { setBye(false); clearJustSignedOut(); }, 3400);
+    return () => clearTimeout(id);
+  }, [justSignedOut, clearJustSignedOut]);
+
   useEffect(() => {
     const id = setInterval(() => setPairIdx((i) => (i + 1) % MARQ_KEYS.length), 4200);
     return () => clearInterval(id);
@@ -211,6 +221,7 @@ export default function Landing() {
         <span className="tiny muted">{t("foot.note")} · build {process.env.BUILD_SHA ?? "dev"}</span>
       </footer>
 
+      <Toast show={bye}><Icon name="check" size={18} /> <b>{t("me.toast.bye")}</b></Toast>
       <Confetti fire={stamped} />
 
       <style>{`
