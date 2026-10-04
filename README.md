@@ -84,6 +84,19 @@ see them, create a free Supabase project, paste **`supabase/setup.sql`** into th
 and set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` (Project Settings → API → secret key).
 The table has row level security on with no policies, so only the server can read or write it.
 
+## Tools used
+
+| Tool | How it is used here |
+|---|---|
+| **PayPal Orders v2** | The client funds an order into escrow — create, approve, capture — and the capture is what starts the work |
+| **PayPal Payouts v1** | Releases the freelancer's share once every criterion passes |
+| **PayPal Payments v1** | Refunds part or all of an order when the Mediator Agent says so |
+| **PayPal webhooks** | `PAYMENT.CAPTURE.COMPLETED` and friends, verified against PayPal's signature and written to the activity log |
+| **Log in with PayPal** (Identity API) | Real sign-in; the profile is keyed to the PayPal account id, which doubles as a Payouts receiver |
+| **AG Studio (AG Grid)** | The Insights dashboard: self-serve widgets over orders, PayPal money events and agent runs, themed with Lunas' palette, plus a starter report and cross-filtering |
+| **Supabase** | Stores published profiles so a client on another device sees the real page |
+| **LLM + deterministic fallback** | Contract drafting, delivery verification and dispute mediation; the deterministic engine keeps the demo alive with no key configured |
+
 ## Deploy
 
 The app lives in `web/`, so the Vercel project must have **Root Directory = `web`**.
@@ -118,7 +131,22 @@ Webhook events are verified with PayPal's `verify-webhook-signature` before anyt
 | **Verification** | `POST /api/agent/verify` | Runs the criteria against the delivery, per-criterion verdict with evidence |
 | **Mediator** | `POST /api/agent/mediate` | Reasons about a dispute and recommends release / revision / refund |
 
-Both run on a real LLM when `LLM_API_KEY` is set and fall back to a deterministic local engine otherwise, so the demo never stalls — the response states which source produced the result.
+All three run on a real LLM when `LLM_API_KEY` is set and fall back to a deterministic local engine otherwise, so the demo never stalls — the response states which source produced the result.
+
+### How verification works
+
+Criteria are machine-checkable rules, so verification can be honest about what it actually proved.
+Every criterion comes back with one of three outcomes — and never a fourth:
+
+| Outcome | Meaning |
+|---|---|
+| **measured** | Proved from the uploaded file: file count and formats, image dimensions, PNG transparency, word counts, file names/contents, the delivery deadline. "Background white" is measured as the share of near-white pixels in the *border ring* of the image — measuring the whole picture would fail every photo whose subject is not white. |
+| **llm** | A judgement only a model can make (copy tone, colour harmony). Runs when `LLM_API_KEY` is set; until then the criterion is reported as needing a review instead of silently passing. |
+| **manual** | The browser genuinely cannot read it (PDF page size, DPI, bleed). The client is told which criteria still need their eye. |
+
+**Try it:** open an order, press **Use sample files** and Lunas draws a 20-photo delivery
+with a canvas (real JPEGs, 2000x1500, one of them deliberately grey) — then press
+**Run verification**. The revision you get is a measurement of that file, not a script.
 
 ## Brand
 
@@ -130,11 +158,12 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 - [x] Two ways in: guest mode (SASAM) and **Log in with PayPal** (Identity API) sessions, per-account profiles
 - [x] Publish a profile to Supabase so clients see the real photo and portfolio on `/to/<handle>`
 - [x] **Insights** — a self-serve dashboard (AG Studio) over the orders, the PayPal money events and the agent runs
+- [x] **Delivery verification that reads the actual files** — count, format, dimensions, transparency, background whiteness and word counts measured in the browser; a criterion nothing could measure is reported as needing a human eye, never as a pass
 - [x] Profile: photo upload (resized in the browser), social links (X, LinkedIn, Instagram, website) and a portfolio list that clients see on the public page
 - [x] PayPal REST integration: Orders v2 create + capture, Payouts v1 release, Payments v1 refund, webhook signature verification
 - [x] Contract / Verification / Mediator agents with LLM + local fallback
 - [ ] Durable storage for orders and the webhook buffer (currently in-memory demo data)
-- [ ] Real file inspection for deliveries (currently the verification runs on the described delivery)
+- [ ] Print-level checks in verification (PDF page size, DPI, colour bleed) — a browser cannot read them, so those criteria are flagged for the client instead of guessed
 - [ ] Persist agent audit trail per order; email/Slack notifications
 
 ## License
