@@ -10,7 +10,7 @@ import {
 } from "./profile";
 
 /* Re-exported so existing imports from "@/lib/me" keep working. */
-export { hostOf, MAX_PORTFOLIO, normalizeUrl, SOCIAL_KEYS } from "./profile";
+export { countryName, hostOf, locationOf, MAX_PORTFOLIO, normalizeUrl, SOCIAL_KEYS } from "./profile";
 export type { MePortfolioItem, MeProfile, MeSocials, SocialKey } from "./profile";
 
 export const ME_COLOR = "var(--peach-l)";
@@ -60,23 +60,38 @@ function parseStored(raw: string, fallback: MeProfile): MeProfile {
   }
 }
 
+/** Demo defaults from earlier versions: demo data, not a user edit, so they may be replaced. */
+function isStaleDefault(p: MeProfile | null | undefined): boolean {
+  if (!p) return false;
+  return (
+    (p.name === "Sari Wulandari" && p.city === "Yogyakarta") ||
+    (p.name === "SASAM" && p.city === "Wonogiri")
+  );
+}
+
 function readProfile(session: Session): MeProfile {
   const fallback = session.mode === "paypal" && session.paypal ? profileFromPayPal(session.paypal) : ME_DEFAULT;
   if (typeof window === "undefined") return fallback;
   try {
     const key = keyOf(identityOf(session));
     const raw = localStorage.getItem(key);
-    if (raw) return parseStored(raw, fallback);
+    if (raw) {
+      const stored = parseStored(raw, fallback);
+      /* A browser that saved the *old* demo default (e.g. SASAM / Wonogiri) keeps showing
+         it otherwise — the persona changed, so drop it and use the current one. */
+      if (!isStaleDefault(stored)) return stored;
+      localStorage.removeItem(key);
+      return fallback;
+    }
     /* one-time migration from the single-profile layout used before sign-in existed.
-       The old *default* persona (Sari Wulandari / Yogyakarta) is stale demo data, not a
-       user edit, so it is dropped in favour of the SASAM persona. */
+       Stale *default* personas (Sari Wulandari / Yogyakarta, SASAM / Wonogiri) are demo
+       data, not user edits, so they are dropped in favour of the current persona. */
     if (session.mode === "guest") {
       const legacy = localStorage.getItem(LEGACY_KEY);
       if (legacy) {
         const migrated = parseStored(legacy, fallback);
         localStorage.removeItem(LEGACY_KEY);
-        const wasOldDefault = migrated?.name === "Sari Wulandari" && migrated?.city === "Yogyakarta";
-        if (migrated && !wasOldDefault) {
+        if (migrated && !isStaleDefault(migrated)) {
           localStorage.setItem(key, JSON.stringify(migrated));
           return migrated;
         }

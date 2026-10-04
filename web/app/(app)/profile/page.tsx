@@ -8,6 +8,7 @@ import { THEMES, useTheme } from "@/lib/theme";
 import { ORDERS } from "@/lib/data";
 import {
   hostOf,
+  locationOf,
   normalizeUrl,
   initialsOf,
   MAX_PORTFOLIO,
@@ -239,7 +240,7 @@ export default function ProfilePage() {
             <div className="row wrap muted" style={{ gap: 8, fontWeight: 700 }}>
               <span>@{me.handle}</span>
               {me.country ? <Country code={me.country} /> : null}
-              {me.city ? <span>· {me.city}</span> : <span className="muted">{t("me.id.fillCity")}</span>}
+              <span>· {locationOf(me, lang)}</span>
             </div>
             <span className="tiny muted">{t("me.since")} · {t("me.langs")}</span>
           </div>

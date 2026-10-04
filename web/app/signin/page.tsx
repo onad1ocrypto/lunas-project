@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
-import { useMe } from "@/lib/me";
+import { locationOf, useMe } from "@/lib/me";
 import { Icon } from "@/components/Icon";
 import { Kicker, LangSwitch, Logo, ThemeSwitch } from "@/components/ui";
 
@@ -12,7 +12,7 @@ import { Kicker, LangSwitch, Logo, ThemeSwitch } from "@/components/ui";
 const ERRORS = ["paypal_not_configured", "cancelled", "bad_state", "no_code"] as const;
 
 export default function SignInPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const router = useRouter();
   const { me, session, sessionReady, signInWithPayPal, signInAsGuest } = useMe();
   const [error, setError] = useState("");
@@ -94,7 +94,7 @@ export default function SignInPage() {
               <span className="kbd">{t("signin.guest.kind")}</span>
             </div>
             <h2 style={{ fontSize: 26, marginTop: 16 }}>{t("signin.guest.title")}</h2>
-            <p style={{ marginTop: 10, lineHeight: 1.6, fontWeight: 600 }}>{t("signin.guest.body", { name: me.name, city: me.city || "Wonogiri" })}</p>
+            <p style={{ marginTop: 10, lineHeight: 1.6, fontWeight: 600 }}>{t("signin.guest.body", { name: me.name, city: locationOf(me, lang) })}</p>
             <ul className="col" style={{ gap: 8, margin: "16px 0 0", listStyle: "none", fontWeight: 700, fontSize: 14 }}>
               {["signin.guest.li1", "signin.guest.li2", "signin.guest.li3"].map((k) => (
                 <li key={k} className="row" style={{ gap: 8, alignItems: "flex-start" }}>
