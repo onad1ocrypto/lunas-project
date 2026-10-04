@@ -1,6 +1,7 @@
 import { captureEscrow } from "@/lib/server/flow";
 import { fail, json, rateLimit } from "@/lib/server/http";
 import { getOrderById } from "@/lib/server/store";
+import { hydrateFromTicket } from "@/lib/server/resolve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ paypalOrderId:
     const { paypalOrderId } = await ctx.params;
     const body = (await req.json().catch(() => ({}))) as { lunasOrderId?: string };
 
+    await hydrateFromTicket(req);
     let lunasOrderId = body.lunasOrderId;
     if (!lunasOrderId) {
       // Resolve LNS-… from the PayPal order id so the endpoint also works from a webhook-style call.

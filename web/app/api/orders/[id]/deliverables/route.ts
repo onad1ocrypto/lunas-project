@@ -1,5 +1,6 @@
 import { fail, json, rateLimit } from "@/lib/server/http";
 import { submitDelivery } from "@/lib/server/flow";
+import { hydrateFromTicket } from "@/lib/server/resolve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ const MAX_TOTAL = (onServerless ? 4 : 40) * 1024 * 1024;
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
+    await hydrateFromTicket(req); // serverless: the client carries the order snapshot
     if (!rateLimit(`deliver:${id}`, 20)) return json({ ok: false, error: "Too many uploads — try again in a minute." }, 429);
 
     const form = await req.formData().catch(() => null);
