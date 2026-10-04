@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { ME, type Criterion } from "@/lib/data";
 import { api } from "@/lib/api";
+import { payLinkWithTicket } from "@/lib/ticket-client";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter } from "@/components/DraftContract";
@@ -22,7 +23,7 @@ export default function PublicOrderPage() {
   const [fire, setFire] = useState(0);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ id: string; payUrl: string } | null>(null);
+  const [created, setCreated] = useState<{ id: string; payUrl: string; ticket?: string } | null>(null);
 
   /** Public client form → real escrow order + payment link (no account required). */
   const submit = async () => {
@@ -42,7 +43,7 @@ export default function PublicOrderPage() {
       setErr(res.error ?? "Something went wrong — please try again.");
       return;
     }
-    setCreated({ id: res.data.order.id, payUrl: res.data.payUrl });
+    setCreated({ id: res.data.order.id, payUrl: payLinkWithTicket(res.data.payUrl, res.data.order.id, res.data.ticket), ticket: res.data.ticket });
     setSent(true);
     setFire((f) => f + 1);
   };

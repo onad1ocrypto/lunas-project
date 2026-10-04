@@ -63,3 +63,26 @@ export function orderIdOf(url: string, body?: BodyInit | null): string | undefin
   }
   return undefined;
 }
+
+/**
+ * Payment links carry their ticket in the fragment (`/pay/LNS-1234#t=…`).
+ *
+ * A fragment is never sent to the server, so the ticket stays out of access logs, and the
+ * link works in *any* browser — the client opening it on their phone has the same state the
+ * freelancer's browser has. This is what makes the demo work without a database.
+ */
+export function payLinkWithTicket(payUrl: string, orderId: string, ticket?: string | null) {
+  const t = ticket ?? ticketFor(orderId);
+  if (!t) return payUrl;
+  return `${payUrl}#t=${t}`;
+}
+
+/** Read a ticket out of the current URL fragment, if present, and remember it. */
+export function absorbTicketFromHash(orderId: string) {
+  if (typeof window === "undefined") return;
+  const match = window.location.hash.match(/[#&]t=([^&]+)/);
+  if (!match) return;
+  rememberTicket(orderId, decodeURIComponent(match[1]));
+  // keep the fragment: reloads and shares stay functional
+}
+

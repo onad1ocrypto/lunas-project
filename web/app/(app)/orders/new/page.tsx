@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { Criterion } from "@/lib/data";
 import { api } from "@/lib/api";
+import { payLinkWithTicket } from "@/lib/ticket-client";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter, CriteriaList } from "@/components/DraftContract";
@@ -27,7 +28,7 @@ export default function NewOrder() {
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ id: string; payUrl: string; engine: string } | null>(null);
+  const [created, setCreated] = useState<{ id: string; payUrl: string; engine: string; ticket?: string } | null>(null);
 
   const steps = [t("new.s1"), t("new.s2"), t("new.s3"), t("new.s4")];
   const canNext = [client.name.trim().length > 1 && /\S+@\S+/.test(client.email), criteria.length > 0, amount > 0 && criteria.length > 0, true][step];
@@ -60,7 +61,12 @@ export default function NewOrder() {
       setSendError(res.error ?? "Could not create the order — try again.");
       return;
     }
-    setCreated({ id: res.data.order.id, payUrl: res.data.payUrl, engine: res.data.engine });
+    setCreated({
+      id: res.data.order.id,
+      payUrl: payLinkWithTicket(res.data.payUrl, res.data.order.id, res.data.ticket),
+      engine: res.data.engine,
+      ticket: res.data.ticket,
+    });
     setStep(3);
     setFire((f) => f + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
