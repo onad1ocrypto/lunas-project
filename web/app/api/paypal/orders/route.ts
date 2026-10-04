@@ -1,6 +1,7 @@
 import { startEscrow } from "@/lib/server/flow";
 import { fail, json, originOf, rateLimit } from "@/lib/server/http";
 import { paypalMode } from "@/lib/server/paypal";
+import { hydrateFromTicket } from "@/lib/server/resolve";
 import { grossOf } from "@/lib/server/flow";
 
 export const runtime = "nodejs";
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { orderId?: string };
     if (!body.orderId) return json({ ok: false, error: "orderId is required" }, 400);
+    await hydrateFromTicket(req);
     if (!rateLimit(`pay-create:${body.orderId}`, 20)) return json({ ok: false, error: "Too many attempts" }, 429);
 
     const origin = originOf(req);

@@ -3,6 +3,7 @@ import { fail, json, originOf, rateLimit } from "@/lib/server/http";
 import { draftContract } from "@/lib/server/agents";
 import { ME, type Criterion } from "@/lib/data";
 import { paypalMode } from "@/lib/server/paypal";
+import { compactSnapshot, signTicket } from "@/lib/server/ticket";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,11 +102,17 @@ export async function POST(req: Request) {
     });
 
     const origin = originOf(req);
+    /**
+     * `ticket` = HMAC-signed snapshot of the order. The browser sends it back on follow-up
+     * calls so the flow still works when the host has no durable storage (serverless).
+     */
+    const ticket = signTicket({ order: compactSnapshot(order) });
     return json(
       {
         ok: true,
         persisted,
         engine,
+        ticket,
         order,
         payUrl: `${origin}/pay/${order.id}`,
         freelancer: ME.name,

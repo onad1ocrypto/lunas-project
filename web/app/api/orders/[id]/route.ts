@@ -1,4 +1,5 @@
-import { getOrderById, updateOrder } from "@/lib/server/store";
+import { updateOrder } from "@/lib/server/store";
+import { resolveOrder } from "@/lib/server/resolve";
 import { fail, json } from "@/lib/server/http";
 import { autoReleaseIfDue } from "@/lib/server/flow";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
-    const order = await getOrderById(id);
+    const order = await resolveOrder(id, _req);
     if (!order) return json({ ok: false, error: `Order ${id} not found` }, 404);
     return json({ ok: true, order });
   } catch (e) {
@@ -25,7 +26,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   try {
     const { id } = await ctx.params;
     const body = (await req.json().catch(() => ({}))) as { action?: string };
-    const order = await getOrderById(id);
+    const order = await resolveOrder(id, req);
     if (!order) return json({ ok: false, error: `Order ${id} not found` }, 404);
 
     if (body.action === "accept") {

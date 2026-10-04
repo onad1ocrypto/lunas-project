@@ -87,6 +87,8 @@ web/
         ├── agents.ts     Contract Agent + Verification Agent (rules + vision)
         ├── image.ts      dependency-free byte inspection (dimensions, alpha, DPI, words)
         ├── flow.ts       escrow orchestration + audit trail + webhook application
+        ├── ticket.ts     HMAC-signed order snapshots (serverless-safe state)
+        ├── resolve.ts    order lookup: store first, then a verified ticket
         └── store.ts      order ledger (JSON file, in-memory fallback)
 ```
 
@@ -98,6 +100,14 @@ freelancer    ──▶ uploads deliverables → Verification Agent
 client/72h    ──▶ release  → Payouts v1 batch           ──▶  freelancer's PayPal
 dispute       ──▶ mediator → Payments v1 refund         ──▶  client's PayPal
 ```
+
+### Running on serverless (why there are "tickets")
+
+`POST /api/orders` also returns a `ticket`: an **HMAC-signed snapshot** of the order. The browser stores it (`localStorage`) and sends it back as `x-lunas-ticket` on every follow-up call.
+
+That exists because serverless instances share no memory — an order created a minute ago can be invisible to the next request, which is exactly the "order not found" a judge would otherwise hit mid-demo. With the ticket the flow survives cold starts with **no database to provision**, and it is safe: the payload is tamper-evident, the signing secret never leaves the server, and money still only moves through PayPal capture/payout/refund with real ids. (A deployment with a durable store just ignores the ticket — the store wins.)
+
+Known limits of that shortcut: a link opened in a *different* browser has no ticket (add Postgres/KV for true multi-device), and the platform balance is simulated until you plug in a place to hold escrow properly — see the roadmap.
 
 ### Acceptance-criteria rule DSL
 
@@ -141,7 +151,7 @@ Anything unprovable from the bytes is reported as **manual/needs review** rather
 - [x] Verification Agent: byte inspection (count/format/dimensions/alpha/DPI/words/deadline) + vision review
 - [x] Public client page → checkout → LUNAS receipt with real PayPal ids
 - [x] Audit trail per order (agent + PayPal + webhook events)
-- [ ] Durable database (currently JSON file / in-memory) + background auto-release job
+- [ ] Durable database (today: JSON file + signed client tickets) + background auto-release job
 - [ ] PDF contract export + e-signature, email/Slack notifications
 - [ ] Multi-currency conversion at contract time
 

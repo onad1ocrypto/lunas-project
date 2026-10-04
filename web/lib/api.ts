@@ -5,6 +5,8 @@
  * so UI code can render a friendly state instead of an unhandled rejection.
  */
 
+import { orderIdOf, rememberTicket, ticketFor } from "./ticket-client";
+
 export interface ApiResult<T> {
   ok: boolean;
   error?: string;
@@ -14,7 +16,14 @@ export interface ApiResult<T> {
 
 async function call<T>(url: string, init?: RequestInit): Promise<ApiResult<T>> {
   try {
-    const res = await fetch(url, { ...init, headers: init?.body instanceof FormData ? init?.headers : { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
+    const isForm = init?.body instanceof FormData;
+    const ticket = ticketFor(orderIdOf(url, init?.body));
+    const headers: Record<string, string> = {
+      ...(isForm ? {} : { "Content-Type": "application/json" }),
+      ...(ticket ? { "x-lunas-ticket": ticket } : {}),
+      ...((init?.headers as Record<string, string>) ?? {}),
+    };
+    const res = await fetch(url, { ...init, headers });
     const data = (await res.json().catch(() => ({}))) as T & { error?: string };
     return { ok: res.ok && (data as { ok?: boolean }).ok !== false, status: res.status, data, error: res.ok ? undefined : data.error ?? `HTTP ${res.status}` };
   } catch (e) {
@@ -27,7 +36,12 @@ export const api = {
   listOrders: () => call<any>("/api/orders", { cache: "no-store" }),
   getOrder: (id: string) => call<any>(`/api/orders/${encodeURIComponent(id)}`, { cache: "no-store" }),
   patchOrder: (id: string, body: unknown) => call<any>(`/api/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
-  createOrder: (body: unknown) => call<any>("/api/orders", { method: "POST", body: JSON.stringify(body) }),
+  createOrder: async (body: unknown) => {
+    const res = await call<any>("/api/orders", { method: "POST", body: JSON.stringify(body) });
+    const id = res.data?.order?.id as string | undefined;
+    if (res.ok && id) rememberTicket(id, res.data?.ticket);
+    return res;
+  },
   draftContract: (body: { brief: string; lang?: string; currency?: string; due?: string }) =>
     call<any>("/api/agent/contract", { method: "POST", body: JSON.stringify(body) }),
   submitDelivery: (id: string, files: File[]) => {

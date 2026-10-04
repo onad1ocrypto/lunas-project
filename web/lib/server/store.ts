@@ -100,7 +100,8 @@ export interface ApiOrder {
 }
 
 const FILE = () => path.join(dataDir(), "orders.json");
-const SEQ = { n: 1500 };
+/** Starts above the seeded demo range (LNS-0129…LNS-0151) so ids never collide. */
+const SEQ = { n: 1600 };
 
 let cache: Map<string, ApiOrder> | null = null;
 let persistDisabled = false;
@@ -167,8 +168,7 @@ export async function getOrderById(id: string) {
   return map.get(id) ?? null;
 }
 
-export async function createOrder(input: {
-  direction: "from_client" | "to_client";
+export async function createOrder(input: {  direction: "from_client" | "to_client";
   title: string;
   brief: string;
   amount: number;
@@ -180,8 +180,11 @@ export async function createOrder(input: {
   contractEngine: "llm" | "heuristic";
 }) {
   const map = await load();
-  SEQ.n += 1;
-  const id = `LNS-${SEQ.n}`;
+  let id = "";
+  do {
+    SEQ.n += 1;
+    id = `LNS-${SEQ.n}`;
+  } while (map.has(id)); // never reuse an id (seeded demo orders, or a rehydrated one)
   const now = new Date().toISOString();
   const order: ApiOrder = {
     id,
@@ -209,6 +212,16 @@ export async function createOrder(input: {
   map.set(id, order);
   const persisted = await persist();
   return { order, persisted };
+}
+
+/** Insert or replace an order — used when a signed client ticket rehydrates state. */
+export async function upsertOrder(order: ApiOrder) {
+  const map = await load();
+  map.set(order.id, order);
+  const n = Number(order.id.replace(/\D/g, ""));
+  if (Number.isFinite(n) && n > SEQ.n) SEQ.n = n;
+  await persist();
+  return order;
 }
 
 export function fakeHash(seed: string) {

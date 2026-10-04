@@ -1,5 +1,6 @@
 import { fail, json } from "@/lib/server/http";
 import { autoReleaseIfDue, releaseEscrow } from "@/lib/server/flow";
+import { hydrateFromTicket } from "@/lib/server/resolve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await ctx.params;
+    await hydrateFromTicket(req);
     const body = (await req.json().catch(() => ({}))) as { actor?: "client" | "auto" | "mediator"; force?: boolean };
 
     if (body.force || body.actor === "client" || body.actor === "mediator") {
