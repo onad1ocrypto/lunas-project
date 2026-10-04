@@ -4,14 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
+import { useMe } from "@/lib/me";
 import { NEEDS_ME, ORDERS } from "@/lib/data";
-import { LangSwitch, Logo, ProfileMenu, ThemeSwitch } from "./ui";
-import { IntegrationBadge } from "./IntegrationBadge";
+import { CapiPose, LangSwitch, Logo, ProfileMenu, ThemeSwitch } from "./ui";
 import { Icon } from "./Icon";
-import { Capi } from "./Capi";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
+  const { me } = useMe();
   const path = usePathname();
   const incoming = ORDERS.filter((o) => o.direction === "from_client" && o.status === "request").length;
   const todo = ORDERS.filter((o) => NEEDS_ME.includes(o.status)).length;
@@ -20,7 +20,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { href: "/dashboard", icon: "home", label: t("nav.dashboard"), color: "var(--lemon)" },
     { href: "/orders?tab=from_client", match: "/orders", icon: "inbox", label: t("nav.orders"), color: "var(--sky)", badge: todo },
     { href: "/orders/new", icon: "send", label: t("nav.newOrder"), color: "var(--pink)" },
-    { href: "/to/sari", icon: "link", label: t("nav.myPage"), color: "var(--mint)" },
+    { href: `/to/${me.handle}`, icon: "link", label: t("nav.myPage"), color: "var(--mint)" },
     { href: "/profile", icon: "user", label: t("nav.profile"), color: "var(--peach)" },
   ];
   const isActive = (n: (typeof nav)[number]) =>
@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="card side-tip" style={{ marginTop: "auto", background: "var(--lav-l)" }}>
-          <div style={{ position: "absolute", top: -58, right: 8 }}><Capi size={64} mood="wink" /></div>
+          <div style={{ position: "absolute", top: -62, right: 8 }}><CapiPose pose="wink" size={68} className="capi-float" /></div>
           <div className="kbd" style={{ color: "var(--ink)" }}>{t("tip.title")}</div>
           <p style={{ fontSize: 13.5, marginTop: 6, lineHeight: 1.45 }}>{t("tip.body", { n: incoming })}</p>
         </div>
@@ -58,7 +58,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <input placeholder={t("top.search")} aria-label={t("top.search")} />
           </div>
           <div className="row" style={{ gap: 10, marginLeft: "auto" }}>
-            <IntegrationBadge />
             <ThemeSwitch />
             <LangSwitch compact />
             <button className="btn sm" aria-label={t("top.notifications")} style={{ position: "relative", padding: 8 }}>

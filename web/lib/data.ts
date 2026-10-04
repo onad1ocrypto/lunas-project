@@ -9,8 +9,7 @@ export type Status =
   | "revision"         // AI found an unmet criterion
   | "review"           // all criteria passed, client review window running
   | "paid"             // released — LUNAS!
-  | "declined"         // freelancer said no, or the payment was reversed
-  | "refunded";        // mediator refunded the client
+  | "declined";
 
 export type CriterionIcon = "file" | "image" | "ruler" | "palette" | "clock" | "text";
 export interface Criterion { label: string; rule: string; icon: CriterionIcon }
@@ -178,7 +177,6 @@ export const STATUS_STYLE: Record<Status, { bg: string; fg: string }> = {
   review: { bg: "var(--lav-l)", fg: "#5B3CC4" },
   paid: { bg: "var(--mint-l)", fg: "#0E7A4D" },
   declined: { bg: "#EEE", fg: "#666" },
-  refunded: { bg: "var(--peach-l)", fg: "#8A3B12" },
 };
 
 /** Which statuses need the freelancer to do something */
@@ -198,13 +196,6 @@ const TPL: Record<L, Record<string, (...a: string[]) => string>> = {
         white: () => "Latar putih bersih", palette: () => "Warna sesuai deskripsi", words: (a, b) => `${a}–${b} kata`, by: (d) => `Dikirim sebelum ${d}`, match: () => "Sesuai brief" },
 };
 
-/** Extension -> mime, so a single named format becomes an exact, checkable rule. */
-const MIME_OF: Record<string, string> = {
-  jpg: "image/jpeg", png: "image/png", svg: "image/svg+xml", gif: "image/gif", webp: "image/webp",
-  pdf: "application/pdf", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", mp4: "video/mp4",
-};
-
 export function draftCriteria(brief: string, lang: L = "en"): { criteria: Criterion[]; amount?: number; title: string } {
   const T = TPL[lang];
   const b = brief.toLowerCase();
@@ -212,12 +203,7 @@ export function draftCriteria(brief: string, lang: L = "en"): { criteria: Criter
   const count = b.match(/(\d+)\s*(?:[a-z]+\s+)?(photos?|images?|files?|slides?|pages?|illustrations?|concepts?|logos?|videos?|foto|gambar|halaman|ilustrasi|konsep|张|个|页)(?![a-z])/);
   if (count) out.push({ label: T.count(count[1], count[2]), rule: `count(files) == ${count[1]}`, icon: "file" });
   const fmt = b.match(/\b(jpg|jpeg|png|svg|pdf|pptx|mp4|docx)\b/g);
-  if (fmt) {
-    const set = [...new Set(fmt.map((f) => (f === "jpeg" ? "jpg" : f)))];
-    // single known format -> an exact mime check, several -> a superset check (both are in the rule DSL)
-    const rule = set.length === 1 && MIME_OF[set[0]] ? `mime == ${MIME_OF[set[0]]}` : `formats ⊇ {${set.join(", ")}}`;
-    out.push({ label: T.fmt(set.map((f) => f.toUpperCase()).join(" + ")), rule, icon: "image" });
-  }
+  if (fmt) out.push({ label: T.fmt([...new Set(fmt)].map((f) => f.toUpperCase()).join(" + ")), rule: `mime ∈ {${[...new Set(fmt)].join(", ")}}`, icon: "image" });
   const px = b.match(/(\d{3,4})\s*(?:x|×)\s*(\d{3,4})/) ;
   const minpx = b.match(/(?:at least|min(?:imum|imal)?\.?|至少)\s*(\d{3,4})\s*px/) || b.match(/(\d{3,4})\s*px/);
   if (px) out.push({ label: T.size(px[1], px[2]), rule: `w == ${px[1]} && h == ${px[2]}`, icon: "ruler" });

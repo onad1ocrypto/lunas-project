@@ -215,12 +215,11 @@ h1, h2, .display { font-variation-settings: "SOFT" 60, "WONK" 1; }
 /* LUNAS stamp */
 .stamp {
   position: absolute; z-index: 5; pointer-events: none;
-  padding: 8px 18px 6px; border: 5px solid var(--red); border-radius: 12px; color: var(--red);
-  font-family: var(--font-display); font-weight: 700; font-size: 46px; letter-spacing: 6px; line-height: 1;
-  transform: rotate(-14deg); opacity: .9; mix-blend-mode: multiply;
-  outline: 2px solid var(--red); outline-offset: 3px; text-align: center;
+  width: 150px; transform: rotate(-14deg); opacity: .93; mix-blend-mode: multiply; text-align: center;
 }
-.stamp small { display: block; font-family: var(--font-body); font-size: 10.5px; font-weight: 900; letter-spacing: 2.5px; margin-top: 2px; }
+.stamp img { display: block; width: 100%; height: auto; }
+[data-theme="midnight"] .stamp, [data-theme="midnight"] .lp-mini-stamp { mix-blend-mode: normal; opacity: .97; }
+.stamp small { display: block; font-family: var(--font-body); font-size: 10.5px; font-weight: 900; letter-spacing: 2.5px; margin-top: 2px; color: var(--red); }
 .stamp.slam { animation: slam .5s cubic-bezier(.2, .9, .3, 1.25) both; }
 @keyframes slam { 0% { opacity: 0; transform: rotate(-26deg) scale(2.8); } 60% { opacity: .95; transform: rotate(-13deg) scale(.9); } 100% { opacity: .9; transform: rotate(-14deg) scale(1); } }
 .shake { animation: shake .45s ease; }
@@ -265,12 +264,14 @@ h1, h2, .display { font-variation-settings: "SOFT" 60, "WONK" 1; }
 .logo-lockup { display: inline-flex; transform: rotate(-1.5deg); transition: transform .3s var(--spring); }
 .logo-lockup:hover { transform: rotate(1deg) scale(1.04); }
 .logo-lockup img { display: block; width: auto; }
+.logo-badge { border-radius: 26%; object-fit: cover; box-shadow: 0 0 0 1.5px rgb(212 175 55 / .65), 0 3px 9px rgb(20 16 40 / .35); }
 .mi { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; font-weight: 800; font-size: 14px; text-align: left; width: 100%; }
 .mi:hover { background: var(--cream); }
 .popmenu { animation: popin .22s var(--spring); }
 @keyframes popin { from { opacity: 0; transform: translateY(-6px) scale(.96); } to { opacity: 1; transform: none; } }
 
 /* ---------- Dark-theme contrast fixes (bright candy surfaces keep dark text) ---------- */
+[data-theme="midnight"] .btn.peach,
 [data-theme="midnight"] .btn.pink,
 [data-theme="midnight"] .btn.lemon,
 [data-theme="midnight"] .btn.mint,
@@ -283,3 +284,59 @@ h1, h2, .display { font-variation-settings: "SOFT" 60, "WONK" 1; }
 [data-theme="midnight"] .dash-hello h1,
 [data-theme="midnight"] .dash-hello p,
 [data-theme="midnight"] .dash-hello .kbd { color: #231942; }
+/* highlighter bar grows to full height so the dark ink sits on candy, not on the night sky */
+[data-theme="midnight"] .hl::after { bottom: 0; height: 1.06em; left: -6px; right: -6px; }
+
+/* fixed-light "paper" surfaces keep dark ink on every theme */
+.paper-fix { color: #231942; }
+.paper-fix .muted, .paper-fix .kbd { color: #5b5280; }
+
+/* receipt paper stays light in dark themes -> force dark ink inside */
+[data-theme="midnight"] .receipt { color: #231942; border-color: #231942; box-shadow: 4px 4px 0 #231942; }
+[data-theme="midnight"] .receipt .muted { color: #5b5280; }
+
+/* Capi sprites & wax seal */
+.capi-float { animation: capifloat 3.2s ease-in-out infinite; }
+@keyframes capifloat { 50% { transform: translateY(-7px) rotate(-2deg); } }
+.capi-pop { animation: popin .5s var(--spring) both; }
+.waxseal { position: absolute; right: 12px; bottom: 10px; width: 76px; transform: rotate(9deg); pointer-events: none; animation: popin .5s .7s var(--spring) both; filter: drop-shadow(2px 3px 0 rgba(35,25,66,.18)); }
+
+/* ---------- Certificate (paid panel) ---------- */
+.cert{position:relative;width:min(440px,100%);padding:22px 24px 18px;background:#FFFEFA;color:#231942;border:2.5px solid var(--ink);border-radius:16px;box-shadow:var(--sh)}
+.cert::before{content:"";position:absolute;inset:7px;border:1.5px solid rgba(35,25,66,.5);border-radius:10px;pointer-events:none}
+.cert .muted,.cert .kbd{color:#5b5280}
+.cc{position:absolute;width:9px;height:9px;background:var(--lemon);border:2px solid var(--ink);transform:rotate(45deg)}
+.cc.tl{top:12px;left:12px}.cc.tr{top:12px;right:12px}.cc.bl{bottom:12px;left:12px}.cc.br{bottom:12px;right:12px}
+.cert-stamp{width:106px;transform:rotate(-10deg);mix-blend-mode:multiply;animation:slam .5s .45s cubic-bezier(.2,.9,.3,1.25) both}
+.cert-stamp.still{animation:none;opacity:.93}
+.cert-wax{width:82px;transform:rotate(-7deg);animation:popin .5s .8s var(--spring) both;filter:drop-shadow(2px 3px 0 rgba(35,25,66,.15))}
+[data-theme="midnight"] .cert-stamp{mix-blend-mode:normal}
+
+.thumb-name{color:#5b5280;}
+
+.demo-box .kbd, .demo-box2 .kbd { color: #5b5280; }
+/* status pills: themed tints + per-theme ink so they never go dark-on-dark */
+.st-request{background:var(--pink-l);color:#C2185B}
+.st-awaiting_payment{background:var(--lemon-l);color:#8A6100}
+.st-in_escrow{background:var(--sky-l);color:#1F5FBF}
+.st-verifying{background:var(--lav-l);color:#5B3CC4}
+.st-revision{background:var(--peach-l);color:#C2551B}
+.st-review{background:var(--lav-l);color:#5B3CC4}
+.st-paid{background:var(--mint-l);color:#0E7A4D}
+.st-declined{background:#ECECEC;color:#666}
+[data-theme="midnight"] .st-request{color:#FF9ED2}
+[data-theme="midnight"] .st-awaiting_payment{color:#FFD84D}
+[data-theme="midnight"] .st-in_escrow{color:#8CC4FF}
+[data-theme="midnight"] .st-verifying,
+[data-theme="midnight"] .st-review{color:#C9B8FF}
+[data-theme="midnight"] .st-revision{color:#FFB08A}
+[data-theme="midnight"] .st-paid{color:#7FE3B5}
+[data-theme="midnight"] .st-declined{color:#B4ABD8}
+/* midnight: bright candy surfaces that inherit theme ink get permanent dark ink */
+[data-theme="midnight"] .otab.on{color:#231942}
+[data-theme="midnight"] .otab.on .tiny,[data-theme="midnight"] .otab.on .muted{color:#5b5280}
+[data-theme="midnight"] .tl-step.now{color:#231942}
+[data-theme="midnight"] .tl-step.now .tl-dot{background:#231942;color:#FFD84D}
+[data-theme="midnight"] .drop{color:#231942}
+[data-theme="midnight"] .drop .muted,[data-theme="midnight"] .drop .tiny{color:#5b5280}
+[data-theme="midnight"] .badge[style*="--lemon"]{color:#231942}

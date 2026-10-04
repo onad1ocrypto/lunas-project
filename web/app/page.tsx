@@ -1,20 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import { useMe } from "@/lib/me";
 import { Capi } from "@/components/Capi";
+import { CapiPose } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { Confetti, Kicker, LangSwitch, Logo, ThemeSwitch } from "@/components/ui";
 
-const ROUTES = [
-  "Austin → Yogyakarta", "Berlin → Bandung", "Singapore → Bali", "London → Jakarta", "上海 → Surabaya",
-  "Osaka → Medan", "Madrid → Makassar", "Toronto → Malang", "Sydney → Semarang", "Seoul → Denpasar",
-];
+const MARQ_KEYS = Array.from({ length: 10 }, (_, i) => `marq.${i + 1}`);
 
 export default function Landing() {
   const { t, money } = useI18n();
+  const { me } = useMe();
   const [stamped, setStamped] = useState(0);
+  const [pairIdx, setPairIdx] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setPairIdx((i) => (i + 1) % MARQ_KEYS.length), 4200);
+    return () => clearInterval(id);
+  }, []);
 
   const steps = [
     { n: 1, icon: "text", color: "var(--lemon)", title: t("how.1.t"), body: t("how.1.b") },
@@ -50,7 +55,7 @@ export default function Landing() {
           <p className="lp-sub muted">{t("lp.sub")}</p>
           <div className="row wrap" style={{ gap: 12, marginTop: 26 }}>
             <Link href="/orders/new" className="btn pink lg pulse-ring">{t("lp.cta1")} <Icon name="send" size={18} /></Link>
-            <Link href="/to/sari" className="btn lg">{t("lp.cta2")}</Link>
+            <Link href={`/to/${me.handle}`} className="btn lg">{t("lp.cta2")}</Link>
           </div>
           <div className="row wrap" style={{ gap: 18, marginTop: 22, fontWeight: 800, fontSize: 13.5 }}>
             <span className="row" style={{ gap: 6 }}><Icon name="shield" size={18} /> {t("lp.trust1")}</span>
@@ -67,30 +72,30 @@ export default function Landing() {
             <path d="M12 2l2.6 6.6L21 9.5l-5 4.4 1.5 7.1L12 17.3 6.5 21 8 13.9 3 9.5l6.4-.9z" fill="var(--lemon)" stroke="var(--ink)" strokeWidth="1.6" strokeLinejoin="round" />
           </svg>
 
-          <div className="card lp-contract">
+          <div className="card lp-contract paper-fix">
             <div className="row between">
               <div>
                 <div className="kbd">{t("lp.scene.contract")}</div>
                 <div className="display" style={{ fontSize: 22, marginTop: 2 }}>{t("lp.scene.job")}</div>
               </div>
-              <span className="badge" style={{ background: "var(--mint-l)" }}><Icon name="lock" size={13} /> {money(150)}</span>
+              <span className="badge" style={{ background: "#DFF3E8", color: "#231942" }}><Icon name="lock" size={13} /> {money(150)}</span>
             </div>
             <div className="col stagger" style={{ gap: 8, marginTop: 14 }}>
               {[t("lp.scene.c1"), t("lp.scene.c2"), t("lp.scene.c3"), t("lp.scene.c4")].map((c, i) => (
-                <div key={i} className="row" style={{ gap: 10, padding: "8px 10px", borderRadius: 12, background: ["var(--lemon-l)", "var(--sky-l)", "var(--lav-l)", "var(--mint-l)"][i], border: "2px solid var(--ink)" }}>
-                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--green)", color: "#fff", display: "grid", placeItems: "center", border: "2px solid var(--ink)" }}>
+                <div key={i} className="row" style={{ gap: 10, padding: "8px 10px", borderRadius: 12, background: ["#FFF3C9", "#DDEBFF", "#ECE6FF", "#E4F7EC"][i], border: "2px solid #231942" }}>
+                  <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#2E9E6B", color: "#fff", display: "grid", placeItems: "center", border: "2px solid #231942" }}>
                     <Icon name="check" size={13} stroke={3.2} />
                   </span>
                   <span style={{ fontWeight: 700, fontSize: 14 }}>{c}</span>
                 </div>
               ))}
             </div>
-            <div className="lp-mini-stamp">LUNAS</div>
+            <div className="lp-mini-stamp"><img src="/brand/stamp-seal.png" alt="LUNAS" /></div>
           </div>
 
-          <div style={{ position: "absolute", right: -6, bottom: -10 }}><Capi size={150} mood="love" /></div>
+          <div style={{ position: "absolute", right: -6, bottom: -14 }}><CapiPose pose="wink" size={158} className="capi-float" /></div>
           <span className="sticker float" style={{ position: "absolute", left: -10, top: 150, background: "var(--mint)", transform: "rotate(-6deg)" }}>+ {money(150)}</span>
-          <span className="sticker float-2" style={{ position: "absolute", right: 10, top: -6, background: "var(--sky)", fontSize: 14 }}>Austin → Yogyakarta</span>
+          <span className="sticker float-2" style={{ position: "absolute", right: 10, top: -6, background: "var(--sky)", fontSize: 14 }}>{t(MARQ_KEYS[pairIdx])}</span>
           <span className="sticker float" style={{ position: "absolute", left: 40, bottom: -6, background: "var(--lemon)", fontSize: 14, animationDelay: "1s" }}>✓ 4/4 {t("lp.scene.passed")}</span>
         </div>
       </section>
@@ -98,9 +103,9 @@ export default function Landing() {
       {/* ---------- MARQUEE ---------- */}
       <div className="marquee lp-marquee">
         <div className="marquee-track">
-          {[...ROUTES, ...ROUTES].map((r, i) => (
+          {[...MARQ_KEYS, ...MARQ_KEYS].map((k, i) => (
             <span key={i} className="row display" style={{ gap: 14, fontSize: 20 }}>
-              {r} <span style={{ color: "var(--red)" }}>✦</span>
+              {t(k)} <span style={{ color: "#231942" }}>✦</span>
             </span>
           ))}
         </div>
@@ -164,20 +169,24 @@ export default function Landing() {
             </button>
           </div>
           <div style={{ position: "relative", display: "grid", placeItems: "center" }}>
-            <div key={stamped} className={`card ${stamped ? "shake" : ""}`} style={{ width: "min(340px,100%)", padding: 24, position: "relative", background: "#FFFEFA" }}>
+            <div key={stamped} className={`card paper-fix ${stamped ? "shake" : ""}`} style={{ width: "min(340px,100%)", padding: 24, position: "relative", background: "#FFFEFA" }}>
               <div className="kbd">{t("try.receipt")}</div>
               <div className="display" style={{ fontSize: 40, margin: "8px 0 14px" }}>{money(150)}</div>
-              {[[t("try.r.to"), "Sari · Yogyakarta"], [t("try.r.from"), "James · Austin"], [t("try.r.check"), "4 / 4 ✓"]].map(([a, b]) => (
+              {[[t("try.r.to"), `${me.name.split(" ")[0]} · ${me.city}`], [t("try.r.from"), "James · Austin"], [t("try.r.check"), "4 / 4 ✓"]].map(([a, b]) => (
                 <div key={a} className="row between" style={{ padding: "8px 0", borderBottom: "2px dashed rgba(35,25,66,.15)", fontSize: 14 }}>
                   <span className="muted">{a}</span><b>{b}</b>
                 </div>
               ))}
               {stamped > 0 && (
-                <div className="stamp slam" style={{ right: 10, top: 64 }}>LUNAS<small>{t("stamp.sub")}</small></div>
+                <div className="row between" key={"s" + stamped} style={{ marginTop: 12, alignItems: "flex-end" }}>
+                  <span className="tiny muted" style={{ fontWeight: 800 }}>lunas.app · {t("stamp.sub")}</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/brand/stamp-seal.png" alt="LUNAS" style={{ width: 82, transform: "rotate(-10deg)", mixBlendMode: "multiply", animation: "slam .5s cubic-bezier(.2,.9,.3,1.25) both" }} />
+                </div>
               )}
             </div>
             <div style={{ position: "absolute", left: -10, bottom: -20 }}>
-              <Capi key={"c" + stamped} size={90} mood={stamped ? "love" : "think"} motion={stamped ? "jump" : "bob"} />
+              <CapiPose key={"c" + stamped} pose={stamped ? "jump" : "idle"} size={96} className={stamped ? "capi-pop" : "capi-float"} />
             </div>
           </div>
         </div>
@@ -187,7 +196,7 @@ export default function Landing() {
       {/* ---------- CTA ---------- */}
       <section className="lp-section">
         <div className="card lp-cta">
-          <Capi size={110} mood="happy" />
+          <CapiPose pose="jump" size={118} className="capi-float" />
           <div className="grow">
             <h2 style={{ fontSize: "clamp(26px,3.4vw,40px)" }}>{t("cta.title")}</h2>
             <p style={{ marginTop: 8, fontWeight: 700, opacity: .85 }}>{t("cta.body")}</p>
@@ -198,8 +207,8 @@ export default function Landing() {
 
       <footer className="lp-foot">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/lunas-emblem.png" alt="Lunas" style={{ height: 118, width: 118, objectFit: "contain" }} />
-        <span className="tiny muted">{t("foot.note")}</span>
+        <img src="/brand/logo-full.png" alt="Lunas Project" style={{ height: 118, width: 118, objectFit: "contain" }} />
+        <span className="tiny muted">{t("foot.note")} · build {process.env.BUILD_SHA ?? "dev"}</span>
       </footer>
 
       <Confetti fire={stamped} />
@@ -216,15 +225,17 @@ export default function Landing() {
         .lp-scene{position:relative;height:460px}
         .blob{position:absolute;border-radius:50%;border:2.5px solid var(--ink)}
         .lp-contract{position:absolute;left:50px;right:70px;top:60px;padding:22px;transform:rotate(-3deg);background:#FFFEFA}
-        .lp-mini-stamp{position:absolute;left:-14px;bottom:-26px;font-family:var(--font-display);font-weight:700;font-size:26px;letter-spacing:4px;color:var(--red);border:4px solid var(--red);border-radius:10px;padding:4px 12px;transform:rotate(-12deg);background:rgba(255,255,255,.7);animation:slam .6s 1.2s cubic-bezier(.2,.9,.3,1.25) both}
+        .lp-mini-stamp{position:absolute;left:-18px;bottom:-34px;width:92px;pointer-events:none;mix-blend-mode:multiply;animation:slam .6s 1.2s cubic-bezier(.2,.9,.3,1.25) both}
+        .lp-mini-stamp img{display:block;width:100%}
         .lp-marquee{background:var(--lemon);border-top:2.5px solid var(--ink);border-bottom:2.5px solid var(--ink);padding:14px 0;transform:rotate(-1.2deg);margin:10px -20px}
         .lp-section{max-width:1200px;margin:0 auto;padding:80px 24px 10px}
         .lp-h2{font-size:clamp(32px,4vw,50px);margin-top:14px;text-align:center}
         .lp-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:40px}
-        .lp-num{width:44px;height:44px;border-radius:50%;border:2.5px solid var(--ink);display:grid;place-items:center;font-family:var(--font-display);font-size:22px;font-weight:700;box-shadow:2px 2px 0 var(--ink)}
+        .lp-num{width:44px;height:44px;border-radius:50%;border:2.5px solid var(--ink);color:#231942;display:grid;place-items:center;font-family:var(--font-display);font-size:22px;font-weight:700;box-shadow:2px 2px 0 var(--ink)}
         .lp-who{display:grid;grid-template-columns:1fr 1fr;gap:24px}
         .lp-try{display:grid;grid-template-columns:1fr 1fr;gap:30px;padding:40px;background:var(--peach-l);align-items:center}
-        .lp-cta{display:flex;align-items:center;gap:26px;padding:30px 36px;background:var(--lav);flex-wrap:wrap}
+        .lp-cta{display:flex;align-items:center;gap:26px;padding:30px 36px;background:var(--lav);color:#231942;flex-wrap:wrap}
+        .lp-cta .muted{color:#4a3f7a}
         .lp-foot{max-width:1200px;margin:0 auto;padding:50px 24px 40px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
         @media (max-width:960px){
           .lp-hero,.lp-who,.lp-try{grid-template-columns:1fr}

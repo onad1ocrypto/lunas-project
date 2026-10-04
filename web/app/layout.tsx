@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Nunito } from "next/font/google";
 import { I18nProvider } from "@/lib/i18n";
+import { MeProvider } from "@/lib/me";
 import { ThemeProvider } from "@/lib/theme";
 import "./globals.css";
 
@@ -22,7 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${fraunces.variable} ${nunito.variable}`}>
       <body>
         <ThemeProvider>
-          <I18nProvider>{children}</I18nProvider>
+          <MeProvider>
+            <I18nProvider>{children}</I18nProvider>
+          </MeProvider>
         </ThemeProvider>
       </body>
     </html>

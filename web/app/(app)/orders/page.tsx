@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
+import { useMe } from "@/lib/me";
 import { NEEDS_ME, ORDERS, type Direction, type Order, type Status } from "@/lib/data";
 import { Icon } from "@/components/Icon";
 import { Avatar, Country, Empty, Product, StatusBadge } from "@/components/ui";
@@ -20,6 +21,7 @@ const FILTERS: Record<Filter, (s: Status) => boolean> = {
 
 function OrdersInner() {
   const { t } = useI18n();
+  const { me } = useMe();
   const router = useRouter();
   const params = useSearchParams();
   const tab: Direction = params.get("tab") === "to_client" ? "to_client" : "from_client";
@@ -42,7 +44,7 @@ function OrdersInner() {
           <p className="muted" style={{ marginTop: 4 }}>{t("orders.sub")}</p>
         </div>
         <div className="row wrap" style={{ gap: 10 }}>
-          <Link href="/to/sari" className="btn"><Icon name="link" size={17} /> {t("orders.myPage")}</Link>
+          <Link href={`/to/${me.handle}`} className="btn"><Icon name="link" size={17} /> {t("orders.myPage")}</Link>
           <Link href="/orders/new" className="btn pink"><Icon name="plus" size={17} /> {t("orders.new")}</Link>
         </div>
       </div>
@@ -89,8 +91,8 @@ function OrdersInner() {
             <h3 style={{ fontSize: 20 }}>{t("orders.share.t")}</h3>
             <p className="muted tiny" style={{ marginTop: 4, fontSize: 14 }}>{t("orders.share.b")}</p>
           </div>
-          <code className="share-link">lunas.app/to/sari</code>
-          <Link href="/to/sari" className="btn mint sm"><Icon name="eye" size={16} /> {t("orders.share.preview")}</Link>
+          <code className="share-link">lunas.app/to/{me.handle}</code>
+          <Link href={`/to/${me.handle}`} className="btn mint sm"><Icon name="eye" size={16} /> {t("orders.share.preview")}</Link>
         </div>
       )}
 
@@ -116,13 +118,13 @@ function OrderCard({ o, tilt }: { o: Order; tilt: number }) {
   const { t, money, date } = useI18n();
   const cta: Record<Status, string> = {
     request: t("cta.review"), awaiting_payment: t("cta.remind"), in_escrow: t("cta.deliver"), verifying: t("cta.view"),
-    revision: t("cta.fix"), review: t("cta.view"), paid: t("cta.receipt"), declined: t("cta.view"), refunded: t("cta.view"),
+    revision: t("cta.fix"), review: t("cta.view"), paid: t("cta.receipt"), declined: t("cta.view"),
   };
   const hot = NEEDS_ME.includes(o.status);
   return (
     <Link href={`/orders/${o.id}`} className="card lift ocard" style={{ ["--tilt" as string]: `${tilt}deg` }}>
       <div className="ocard-top" style={{ background: o.accent }}>
-        <span className="mono tiny" style={{ fontWeight: 800 }}>{o.id}</span>
+        <span className="mono tiny" style={{ fontWeight: 800, color: "#231942" }}>{o.id}</span>
         <span className="ocard-thumb"><Product kind={o.product} /></span>
       </div>
       <div style={{ padding: "16px 18px 18px" }}>
