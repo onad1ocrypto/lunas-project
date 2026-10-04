@@ -5,12 +5,13 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
-import { getOrder, ORDERS, type Order, type ProductKind, type Status } from "@/lib/data";
+import { getOrder, ORDERS, type Criterion, type Order, type Status } from "@/lib/data";
 import { MoneyRail } from "@/components/MoneyRail";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { CriteriaList } from "@/components/DraftContract";
-import {Avatar, Confetti, Country, Product, StatusBadge, Toast, CapiPose } from "@/components/ui";
+import { DeliveryPanel } from "@/components/DeliveryPanel";
+import {Avatar, Confetti, Country, StatusBadge, Toast, CapiPose } from "@/components/ui";
 
 type Log = { who: string; msg: string; res?: string; kind: "ai" | "pp" | "hook" | "err" };
 
@@ -298,142 +299,6 @@ function PaymentPanel({ order, log, onPaid, onCapture }: { order: Order; log: (l
         .env.sealed .env-seal{animation:popin .5s 1.4s var(--spring) both;transform:none}
         .demo-box{border:2.5px dashed var(--ink-3);border-radius:16px;padding:12px;background:rgba(255,255,255,.6)}
         @media (max-width:600px){.pay-grid{grid-template-columns:1fr}}
-      `}</style>
-    </div>
-  );
-}
-
-const DELIVERY: ProductKind[] = ["bottle", "mug", "shoe", "bag", "candle", "watch", "plant", "cap"];
-const BAD = 5;
-type Check = "idle" | "run" | "pass" | "fail";
-
-function DeliveryPanel({ order, status, setStatus, log }: { order: Order; status: Status; setStatus: (s: Status) => void; log: (l: Log) => void }) {
-  const { t } = useI18n();
-  const sleep = useSleep();
-  const [uploaded, setUploaded] = useState(status !== "in_escrow");
-  const [scan, setScan] = useState(0);
-  const [checks, setChecks] = useState<Check[]>(() => order.criteria.map((_, i) => (status === "revision" ? (i === order.criteria.length - 1 ? "fail" : "pass") : "idle")));
-  const [fixed, setFixed] = useState(false);
-  const failIdx = order.criteria.length - 1;
-  const setC = (i: number, c: Check) => setChecks((x) => x.map((v, j) => (j === i ? c : v)));
-
-  const upload = async () => {
-    try {
-      setUploaded(true);
-      log({ who: "webhook", msg: "delivery.uploaded", res: "20 files · 61.4 MB", kind: "hook" });
-    } catch {}
-  };
-  const verify = async () => {
-    try {
-      setStatus("verifying");
-      setScan((s) => s + 1);
-      log({ who: "verify_agent", msg: "start", res: `${order.criteria.length} criteria from ${order.id}`, kind: "ai" });
-      setChecks(order.criteria.map(() => "run"));
-      let verdict: { results?: { pass: boolean; note: string }[] } | null = null;
-      try {
-        const vr = await fetch("/api/agent/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ criteria: order.criteria, attempt: fixed ? 2 : 1 }) });
-        if (vr.ok) verdict = await vr.json();
-      } catch {}
-      for (let i = 0; i < order.criteria.length; i++) {
-        await sleep(650);
-        const fail = verdict?.results ? !verdict.results[i]?.pass : i === failIdx && !fixed;
-        const note = fail ? (verdict?.results?.[i]?.note ?? "IMG_014 ✕ (21% non-white)") : "✓";
-        setC(i, fail ? "fail" : "pass");
-        log({ who: "verify_agent", msg: order.criteria[i].rule, res: fail ? note.replace(":", " ✕") : "✓", kind: fail ? "err" : "ai" });
-      }
-      if (!fixed) {
-        await sleep(300);
-        log({ who: "verify_agent", msg: "request_revision(IMG_014)", res: "funds stay in escrow", kind: "ai" });
-        setStatus("revision");
-      } else {
-        await sleep(500);
-        log({ who: "verify_agent", msg: "all criteria met", res: "client review (72h)", kind: "ai" });
-        setStatus("review");
-      }
-    } catch {}
-  };
-  const reupload = async () => {
-    try {
-      setFixed(true);
-      log({ who: "webhook", msg: "delivery.revised", res: "IMG_014 v2", kind: "hook" });
-      setC(failIdx, "run");
-      await sleep(900);
-      setC(failIdx, "pass");
-      log({ who: "verify_agent", msg: order.criteria[failIdx].rule, res: "✓", kind: "ai" });
-      await sleep(700);
-      log({ who: "verify_agent", msg: "all criteria met", res: "client review (72h)", kind: "ai" });
-      setStatus("review");
-    } catch {}
-  };
-
-  const head = status === "revision" ? { c: "var(--peach)", i: "refresh", t: t("dl.revT"), s: t("dl.revB") }
-    : status === "verifying" ? { c: "var(--lav)", i: "bot", t: t("dl.verT"), s: t("dl.verB") }
-    : { c: "var(--sky)", i: "upload", t: t("dl.t"), s: t("dl.b") };
-
-  return (
-    <div className="card pad rise" style={{ background: status === "revision" ? "var(--peach-l)" : status === "verifying" ? "var(--lav-l)" : "var(--sky-l)" }}>
-      <PanelHead color={head.c} icon={head.i} title={head.t} sub={head.s} />
-      {!uploaded ? (
-        <button className="drop" onClick={upload}>
-          <span className="drop-ic float"><Icon name="upload" size={30} /></span>
-          <b style={{ fontSize: 17 }}>{t("dl.drop")}</b>
-          <span className="tiny muted">{t("dl.dropSub")}</span>
-        </button>
-      ) : (
-        <div className="dl-grid">
-          <div style={{ position: "relative" }}>
-            {scan > 0 && <div key={scan} className="scanline" />}
-            <div className="thumbs stagger">
-              {DELIVERY.map((k, i) => {
-                const bad = i === BAD && !fixed && (checks[failIdx] === "fail");
-                const ok = checks.every((c) => c === "pass") || (checks[failIdx] === "fail" && i !== BAD);
-                return (
-                  <div key={k + (i === BAD && fixed ? "v2" : "")} className={`thumb ${bad ? "bad" : ""}`}>
-                    <Product kind={k} bg={i === BAD && !fixed ? "#D9D4CC" : "#fff"} />
-                    <span className="thumb-name">IMG_{String([1, 4, 7, 9, 11, 14, 16, 19][i]).padStart(3, "0")}</span>
-                    {(bad || ok) && <span className="thumb-badge" style={{ background: bad ? "var(--red)" : "var(--green)" }}>{bad ? "!" : "✓"}</span>}
-                  </div>
-                );
-              })}
-              <div className="thumb more">+12</div>
-            </div>
-          </div>
-          <div className="col" style={{ gap: 8 }}>
-            {order.criteria.map((c, i) => (
-              <div key={c.label} className={`chk ${checks[i]}`}>
-                <span className="chk-st">{checks[i] === "pass" ? "✓" : checks[i] === "fail" ? "✕" : ""}</span>
-                <span style={{ fontWeight: 700, fontSize: 14 }}>{c.label}</span>
-              </div>
-            ))}
-            {status === "in_escrow" && <button className="btn lav" style={{ marginTop: 6 }} onClick={verify}><Icon name="bot" size={17} /> {t("dl.run")}</button>}
-            {status === "revision" && (
-              <div className="note pop-in">
-                <b className="row" style={{ gap: 6 }}><Capi size={30} motion="none" mood="think" /> {t("dl.agentSays")}</b>
-                <p style={{ margin: "6px 0 10px", fontSize: 14 }}>{t("dl.agentMsg")}</p>
-                <button className="btn sm peach" style={{ background: "var(--peach)" }} onClick={reupload}><Icon name="upload" size={15} /> {t("dl.reupload")}</button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      <style>{`
-        .drop{width:100%;border:3px dashed var(--ink);border-radius:20px;padding:34px 20px;background:rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;gap:8px;transition:.2s}
-        .drop:hover{background:#fff;transform:scale(1.01)}
-        .drop-ic{width:62px;height:62px;border-radius:18px;border:2.5px solid var(--ink);background:var(--sky);display:grid;place-items:center;box-shadow:3px 3px 0 var(--ink)}
-        .dl-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px}
-        .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-        .thumb{aspect-ratio:1;border:2.5px solid var(--ink);border-radius:14px;overflow:hidden;position:relative;background:#fff}
-        .thumb.bad{box-shadow:0 0 0 3px var(--red);animation:shake .45s}
-        .thumb.more{display:grid;place-items:center;font-weight:900;border-style:dashed;background:transparent}
-        .thumb-name{position:absolute;left:5px;bottom:3px;font-size:9.5px;font-weight:800;color:#5b5280}
-        .thumb-badge{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;border:2px solid var(--ink);color:#fff;font-size:11px;font-weight:900;display:grid;place-items:center;animation:popin .35s var(--spring)}
-        .chk{display:flex;align-items:center;gap:10px;padding:10px 12px;border:2.5px solid var(--ink);border-radius:14px;background:var(--paper);transition:background .3s}
-        .chk-st{width:24px;height:24px;border-radius:50%;border:2.5px solid var(--ink-3);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:900;flex:none}
-        .chk.run .chk-st{border-color:var(--ink-3);border-top-color:var(--ink);animation:spin .7s linear infinite}
-        .chk.pass{background:var(--mint-l)} .chk.pass .chk-st{background:var(--green);border-color:var(--ink);animation:popin .35s var(--spring)}
-        .chk.fail{background:var(--red-l)} .chk.fail .chk-st{background:var(--red);border-color:var(--ink);animation:popin .35s var(--spring)}
-        .note{background:var(--paper);border:2.5px solid var(--ink);border-left-width:8px;border-left-color:var(--peach);border-radius:14px;padding:12px}
-        @media (max-width:640px){.dl-grid{grid-template-columns:1fr}}
       `}</style>
     </div>
   );
