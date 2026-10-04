@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { draftCriteria, type Criterion } from "@/lib/data";
+import { api } from "@/lib/api";
 import { Icon } from "./Icon";
 import { Capi } from "./Capi";
+
+type DraftResult = ReturnType<typeof draftCriteria>;
 
 export const CRIT_COLORS = ["var(--lemon-l)", "var(--sky-l)", "var(--lav-l)", "var(--mint-l)", "var(--peach-l)", "var(--pink-l)"];
 const ICON_FOR: Record<Criterion["icon"], string> = { file: "file", image: "image", ruler: "ruler", palette: "palette", clock: "clock", text: "text" };
@@ -15,25 +18,47 @@ export function BriefDrafter({
 }: {
   brief: string;
   setBrief: (s: string) => void;
-  onDrafted: (r: ReturnType<typeof draftCriteria>) => void;
+  onDrafted: (r: DraftResult) => void;
   example: string;
   placeholder: string;
 }) {
   const { t, lang } = useI18n();
   const [phase, setPhase] = useState<"idle" | "thinking" | "done">("idle");
-  const [result, setResult] = useState<ReturnType<typeof draftCriteria> | null>(null);
+  const [result, setResult] = useState<DraftResult | null>(null);
+  const [engine, setEngine] = useState<"llm" | "heuristic" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const busy = useRef(false);
 
-  useEffect(() => {
-    if (phase !== "thinking") return;
-    const id = setTimeout(() => {
-      const r = draftCriteria(brief, lang);
-      setResult(r);
-      setPhase("done");
-      onDrafted(r);
-    }, 1700);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  /**
+   * The Contract Agent. Calls the real /api/agent/contract endpoint (LLM when a key is
+   * configured, deterministic parser otherwise) and falls back locally if the network is
+   * unavailable — so the demo keeps moving and the badge always tells the truth.
+   */
+  const runDraft = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setError(null);
+    setPhase("thinking");
+    const started = Date.now();
+    const res = await api.draftContract({ brief, lang });
+    const wait = Math.max(0, 900 - (Date.now() - started));
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+
+    let draft: DraftResult;
+    if (res.ok && Array.isArray(res.data?.criteria) && res.data.criteria.length) {
+      draft = { criteria: res.data.criteria, amount: res.data.amount, title: res.data.title ?? "" };
+      setEngine(res.data.engine === "llm" ? "llm" : "heuristic");
+    } else {
+      const local = draftCriteria(brief, lang);
+      draft = { criteria: local.criteria, amount: local.amount, title: local.title };
+      setEngine("heuristic");
+      if (!res.ok) setError(res.error ?? "offline — drafted locally");
+    }
+    setResult(draft);
+    setPhase("done");
+    onDrafted(draft);
+    busy.current = false;
+  }, [brief, lang, onDrafted]);
 
   return (
     <div className="col" style={{ gap: 14 }}>
@@ -49,10 +74,16 @@ export function BriefDrafter({
       </div>
 
       <div className="row wrap" style={{ gap: 12 }}>
-        <button type="button" className="btn lav" disabled={brief.trim().length < 15 || phase === "thinking"} onClick={() => setPhase("thinking")}>
+        <button type="button" className="btn lav" disabled={brief.trim().length < 15 || phase === "thinking"} onClick={runDraft}>
           <Icon name="sparkles" size={17} /> {phase === "done" ? t("new.redraft") : t("new.draftAI")}
         </button>
         <span className="tiny muted">{t("new.aiHint")}</span>
+        {engine && (
+          <span className="badge" style={{ background: engine === "llm" ? "var(--mint-l)" : "var(--lemon-l)" }} title={error ?? undefined}>
+            <Icon name="bot" size={13} /> {engine === "llm" ? "LLM agent" : "heuristic agent"}
+          </span>
+        )}
+        {error && <span className="tiny muted">{error}</span>}
       </div>
 
       {phase === "thinking" && (

@@ -1,36 +1,33 @@
-# Lunas — web (UI stage)
+# Lunas — web app
 
-Playful "candy sticker" UI for Lunas: AI-verified escrow for freelancers, powered by PayPal.
-Languages: **English (default)**, 中文, Bahasa Indonesia (switcher top-right, saved in localStorage).
+Next.js 16 (App Router) + TypeScript. Playful "candy sticker" UI for **Lunas**, AI-verified escrow for freelancers, powered by PayPal.
+Languages: **English (default)**, 中文, Bahasa Indonesia (switcher top-right, saved per device). Themes: Candy, Midnight, Matcha.
+
+> Full project documentation, hackathon mapping and the demo script live in the [root README](../README.md).
 
 ## Run
+
 ```bash
 npm install
 npm run dev      # http://localhost:3000
+npm run build && npm start
 ```
 
+Works with **no credentials**: the app boots in simulation mode and the badge in the top bar shows whether PayPal and the AI agents are live or simulated. Configure `web/.env.local` (see `.env.example`) to switch to real PayPal sandbox + real LLM.
+
 ## Pages
-| Route | What it is |
-|---|---|
-| `/` | Landing page (hero, how it works, "try the stamp" demo) |
-| `/dashboard` | Freelancer home: stats, orders needing attention, earnings, activity |
-| `/orders?tab=from_client` | **Orders from clients** (incoming requests) |
-| `/orders?tab=to_client` | **Orders to clients** (orders you sent) |
-| `/orders/new` | 4-step wizard to send an order to a client (AI drafts the contract) |
-| `/orders/[id]` | Order detail with live flow: accept → pay → deliver → AI check → review → LUNAS stamp |
-| `/to/sari` | Public order page clients use to send a request |
 
-## Structure
-- `lib/dict.ts` — all UI text in 3 languages
-- `lib/i18n.tsx` — language provider, `t()`, money/date formatting per locale
-- `lib/data.ts` — mock orders + temporary "fake AI" brief parser (to be replaced by the real Contract Agent)
-- `components/` — Capi mascot, money rail, UI primitives, app shell
+| Route | Who it's for | What it does |
+| --- | --- | --- |
+| `/` | everyone | landing page, the LUNAS stamp demo |
+| `/dashboard` | freelancer | what needs attention today |
+| `/orders` | freelancer | orders from clients / orders to clients |
+| `/orders/new` | freelancer | 4-step wizard: client → brief (Contract Agent) → contract → link |
+| `/orders/[id]` | freelancer | escrow timeline, upload + verify, review window, receipt |
+| `/to/[handle]` | client | public "hire me" page — send a brief, get a contract |
+| `/pay/[id]` | client | checkout: fund the escrow with PayPal |
+| `/profile` | freelancer | identity, preferences, PayPal sandbox card |
 
-> UI stage only: data is mocked, PayPal/AI calls are simulated. Next step: wire the PayPal sandbox (Orders, Payouts, Webhooks) and a real LLM.
+## API
 
-## Brand assets (`../brand/` and `public/brand/`)
-- `lunas-logo-gold-transparent-2k.png` — gold logo, transparent bg (used on the site)
-- `lunas-emblem-gold-transparent-2k.png` — emblem-only crop (navbar tile, favicon)
-- `lunas-logo-gold-on-navy-2k.png` — original lockup on navy (banners, video, slides)
-- `lunas-logo-transparent-removebg-500.png` — original remove.bg export
-- Site copies: `public/brand/logo-full.png`, `public/brand/emblem.png`, favicon `app/icon.png`
+All routes are documented in the root README. `GET /api/health` is the fastest way to see what is wired up on the running deployment.

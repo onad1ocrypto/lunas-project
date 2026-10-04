@@ -116,7 +116,7 @@ function OrderCard({ o, tilt }: { o: Order; tilt: number }) {
   const { t, money, date } = useI18n();
   const cta: Record<Status, string> = {
     request: t("cta.review"), awaiting_payment: t("cta.remind"), in_escrow: t("cta.deliver"), verifying: t("cta.view"),
-    revision: t("cta.fix"), review: t("cta.view"), paid: t("cta.receipt"), declined: t("cta.view"),
+    revision: t("cta.fix"), review: t("cta.view"), paid: t("cta.receipt"), declined: t("cta.view"), refunded: t("cta.view"),
   };
   const hot = NEEDS_ME.includes(o.status);
   return (

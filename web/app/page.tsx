@@ -198,7 +198,7 @@ export default function Landing() {
 
       <footer className="lp-foot">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/logo-full.png" alt="Lunas Project" style={{ height: 118, width: 118, objectFit: "contain" }} />
+        <img src="/brand/lunas-emblem.png" alt="Lunas" style={{ height: 118, width: 118, objectFit: "contain" }} />
         <span className="tiny muted">{t("foot.note")}</span>
       </footer>
 

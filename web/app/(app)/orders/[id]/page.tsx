@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getOrder, ORDERS, type Order, type ProductKind, type Status } from "@/lib/data";
+import { api } from "@/lib/api";
 import { MoneyRail } from "@/components/MoneyRail";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
@@ -34,6 +35,8 @@ export default function OrderDetail() {
   const [fire, setFire] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [justPaid, setJustPaid] = useState(false);
+  /** Real ids returned by PayPal — shown on the receipt so nothing in the demo is invented. */
+  const [pp, setPp] = useState<{ captureId?: string; paypalOrderId?: string; payoutBatchId?: string }>({});
 
   const log = (l: Log) => setLogs((x) => [...x, l]);
   const flash = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
@@ -87,16 +90,26 @@ export default function OrderDetail() {
               onDecline={() => { setStatus("declined"); log({ who: "contract", msg: "declined", kind: "err" }); }} />
           )}
           {status === "awaiting_payment" && (
-            <PaymentPanel order={order} log={log} onPaid={() => { setStatus("in_escrow"); flash(t("toast.funded")); }} />
+            <PaymentPanel order={order} log={log} onPaid={(info) => { setStatus("in_escrow"); setPp((p) => ({ ...p, ...info })); flash(t("toast.funded")); }} />
           )}
           {(status === "in_escrow" || status === "verifying" || status === "revision") && (
             <DeliveryPanel order={order} status={status} setStatus={setStatus} log={log} />
           )}
           {status === "review" && (
             <ReviewPanel order={order} log={log}
-              onApproved={() => { setStatus("paid"); setJustPaid(true); setFire((f) => f + 1); }} />
+              onApproved={(info) => { setStatus("paid"); setJustPaid(true); setPp((p) => ({ ...p, ...info })); setFire((f) => f + 1); }}
+              onRefunded={() => { setStatus("refunded"); flash("Client refunded via PayPal"); }} />
           )}
-          {status === "paid" && <PaidPanel order={order} slam={justPaid} />}
+          {status === "paid" && <PaidPanel order={order} slam={justPaid} payoutBatchId={pp.payoutBatchId} />}
+          {status === "refunded" && (
+            <div className="card pad rise" style={{ background: "var(--peach-l)" }}>
+              <PanelHead color="var(--peach)" icon="shield" title="Refunded — dispute resolved" sub="The Mediator Agent returned the client's money through the PayPal refund API. Escrow is empty, nobody lost trust." />
+              <div className="row wrap" style={{ gap: 10 }}>
+                <span className="badge" style={{ background: "var(--paper)" }}>Payments v1 · refund</span>
+                <span className="badge" style={{ background: "var(--paper)" }}>no chargeback</span>
+              </div>
+            </div>
+          )}
           {status === "declined" && (
             <div className="card pad col" style={{ alignItems: "center", gap: 10, textAlign: "center" }}>
               <Capi size={90} mood="think" />
@@ -180,21 +193,53 @@ function RequestPanel({ order, onAccept, onDecline }: { order: Order; onAccept: 
   );
 }
 
-function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => void; onPaid: () => void }) {
+function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => void; onPaid: (info?: { captureId?: string; paypalOrderId?: string }) => void }) {
   const { t } = useI18n();
   const sleep = useSleep();
   const [phase, setPhase] = useState<"wait" | "paying" | "sealed">("wait");
+  const [approvalUrl, setApprovalUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Orders v2 → capture. Two calls, real PayPal when keys are configured, simulator when
+   * they are not. Either way the ids that land in the log come from the server.
+   */
   const pay = async () => {
     try {
+      setError(null);
       setPhase("paying");
-      log({ who: "paypal", msg: "orders.create", res: `intent: CAPTURE · ${(order.amount * 1.025).toFixed(2)} USD`, kind: "pp" });
-      await sleep(1100);
-      log({ who: "paypal", msg: "orders.capture", res: "status: COMPLETED", kind: "pp" });
+      const created = await api.createEscrowPayment(order.id);
+      if (!created.ok) {
+        log({ who: "paypal", msg: "orders.create", res: `FAILED: ${created.error}`, kind: "err" });
+        setError(created.error ?? "PayPal refused the request");
+        setPhase("wait");
+        return;
+      }
+      const d = created.data;
+      setApprovalUrl(d.approvalUrl ?? null);
+      log({
+        who: "paypal",
+        msg: "orders.create",
+        res: `intent: CAPTURE · ${Number(d.amount).toFixed(2)} ${d.currency} · ${d.paypalOrderId}${d.simulated ? " (simulated)" : ""}`,
+        kind: "pp",
+      });
+      await sleep(900);
+
+      const captured = await api.captureEscrowPayment(d.paypalOrderId, order.id);
+      if (!captured.ok) {
+        log({ who: "paypal", msg: "orders.capture", res: `FAILED: ${captured.error}`, kind: "err" });
+        setError(captured.error ?? "Capture failed");
+        setPhase("wait");
+        return;
+      }
+      log({ who: "paypal", msg: "orders.capture", res: `status: ${String(captured.data.status ?? "COMPLETED").toUpperCase()} · ${captured.data.captureId ?? "capture id pending"}`, kind: "pp" });
       setPhase("sealed");
-      await sleep(1700);
-      log({ who: "webhook", msg: "PAYMENT.CAPTURE.COMPLETED", res: "order → IN_ESCROW · Sari notified", kind: "hook" });
-      onPaid();
-    } catch {}
+      await sleep(1400);
+      log({ who: "webhook", msg: "PAYMENT.CAPTURE.COMPLETED", res: `order → IN_ESCROW · ${order.client.name.split(" ")[0]} funded the escrow`, kind: "hook" });
+      onPaid({ captureId: captured.data.captureId, paypalOrderId: d.paypalOrderId });
+    } catch {
+      setPhase("wait");
+    }
   };
   return (
     <div className="card pad rise" style={{ background: "var(--lemon-l)" }}>
@@ -212,11 +257,26 @@ function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => v
           <div className="env-seal">L</div>
         </div>
         <div className="col" style={{ gap: 10 }}>
-          <code style={{ background: "var(--paper)", border: "2.5px dashed var(--ink)", borderRadius: 12, padding: "10px 12px", fontWeight: 800 }}>lunas.app/pay/{order.id}</code>
+          <Link href={`/pay/${order.id}`} className="code-link" style={{ background: "var(--paper)", border: "2.5px dashed var(--ink)", borderRadius: 12, padding: "10px 12px", fontWeight: 800, display: "block", wordBreak: "break-all" }}>
+            {"</>"} Client checkout · /pay/{order.id}
+          </Link>
           <div className="row wrap" style={{ gap: 8 }}>
-            <button className="btn sm"><Icon name="copy" size={15} /> {t("new.copy")}</button>
-            <button className="btn sm"><Icon name="bell" size={15} /> {t("pay.remind")}</button>
+            <button
+              className="btn sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(`${window.location.origin}/pay/${order.id}`);
+                } catch {}
+              }}
+            >
+              <Icon name="copy" size={15} /> {t("new.copy")}
+            </button>
+            <Link className="btn sm" href={`/pay/${order.id}`} target="_blank"><Icon name="eye" size={15} /> {t("pay.remind")}</Link>
+            {approvalUrl && phase === "wait" && (
+              <a className="btn sm" href={approvalUrl} target="_blank" rel="noreferrer"><Icon name="link" size={15} /> PayPal approval page</a>
+            )}
           </div>
+          {error && <span className="tiny" style={{ color: "var(--red)" }}>{error}</span>}
           <div className="demo-box">
             <div className="kbd" style={{ marginBottom: 8 }}>{t("demo.label")}</div>
             <button className="btn paypal" disabled={phase !== "wait"} onClick={pay}>
@@ -245,123 +305,207 @@ function PaymentPanel({ order, log, onPaid }: { order: Order; log: (l: Log) => v
   );
 }
 
-const DELIVERY: ProductKind[] = ["bottle", "mug", "shoe", "bag", "candle", "watch", "plant", "cap"];
-const BAD = 5;
 type Check = "idle" | "run" | "pass" | "fail";
+type VerifyRow = { label: string; rule: string; status: "pass" | "fail" | "manual"; evidence: string; engine: string };
 
+/**
+ * Delivery panel — real uploads, real verification.
+ *
+ * Files go to POST /api/orders/:id/deliverables, where the server inspects the bytes
+ * (format, dimensions, alpha, DPI, word counts) and runs the Verification Agent. The
+ * animation mirrors the actual per-criterion results instead of a script.
+ */
 function DeliveryPanel({ order, status, setStatus, log }: { order: Order; status: Status; setStatus: (s: Status) => void; log: (l: Log) => void }) {
   const { t } = useI18n();
   const sleep = useSleep();
-  const [uploaded, setUploaded] = useState(status !== "in_escrow");
+  const input = useRef<HTMLInputElement>(null);
+  const [picked, setPicked] = useState(status !== "in_escrow");
+  const [names, setNames] = useState<string[]>([]);
+  const [checks, setChecks] = useState<Check[]>(() => order.criteria.map(() => (status === "revision" ? "idle" : "idle")));
   const [scan, setScan] = useState(0);
-  const [checks, setChecks] = useState<Check[]>(() => order.criteria.map((_, i) => (status === "revision" ? (i === order.criteria.length - 1 ? "fail" : "pass") : "idle")));
-  const [fixed, setFixed] = useState(false);
-  const failIdx = order.criteria.length - 1;
-  const setC = (i: number, c: Check) => setChecks((x) => x.map((v, j) => (j === i ? c : v)));
+  const [busy, setBusy] = useState(false);
+  const [revisionNote, setRevisionNote] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const upload = async () => {
-    try {
-      setUploaded(true);
-      log({ who: "webhook", msg: "delivery.uploaded", res: "20 files · 61.4 MB", kind: "hook" });
-    } catch {}
-  };
-  const verify = async () => {
-    try {
-      setStatus("verifying");
-      setScan((s) => s + 1);
-      log({ who: "verify_agent", msg: "start", res: `${order.criteria.length} criteria from ${order.id}`, kind: "ai" });
-      setChecks(order.criteria.map(() => "run"));
-      for (let i = 0; i < order.criteria.length; i++) {
-        await sleep(650);
-        const fail = i === failIdx && !fixed;
-        setC(i, fail ? "fail" : "pass");
-        log({ who: "verify_agent", msg: order.criteria[i].rule, res: fail ? "IMG_014 ✕ (21% non-white)" : "✓", kind: fail ? "err" : "ai" });
-      }
-      if (!fixed) {
-        await sleep(300);
-        log({ who: "verify_agent", msg: "request_revision(IMG_014)", res: "funds stay in escrow", kind: "ai" });
-        setStatus("revision");
-      } else {
-        await sleep(500);
-        log({ who: "verify_agent", msg: "all criteria met", res: "client review (72h)", kind: "ai" });
-        setStatus("review");
-      }
-    } catch {}
-  };
-  const reupload = async () => {
-    try {
-      setFixed(true);
-      log({ who: "webhook", msg: "delivery.revised", res: "IMG_014 v2", kind: "hook" });
-      setC(failIdx, "run");
-      await sleep(900);
-      setC(failIdx, "pass");
-      log({ who: "verify_agent", msg: order.criteria[failIdx].rule, res: "✓", kind: "ai" });
-      await sleep(700);
-      log({ who: "verify_agent", msg: "all criteria met", res: "client review (72h)", kind: "ai" });
+  const run = async (files: File[]) => {
+    if (!files.length || busy) return;
+    setBusy(true);
+    setError(null);
+    setPicked(true);
+    setRevisionNote(null);
+    setStatus("verifying");
+    setScan((s) => s + 1);
+    setChecks(order.criteria.map(() => "run"));
+    log({
+      who: "freelancer",
+      msg: "delivery.upload",
+      res: `${files.length} file(s) · ${(files.reduce((s, f) => s + f.size, 0) / 1e6).toFixed(1)} MB`,
+      kind: "hook",
+    });
+
+    const res = await api.submitDelivery(order.id, files);
+    if (!res.ok) {
+      log({ who: "verify_agent", msg: "delivery.rejected", res: res.error ?? "upload failed", kind: "err" });
+      setError(res.error ?? "Upload failed");
+      setStatus("in_escrow");
+      setChecks(order.criteria.map(() => "idle"));
+      setBusy(false);
+      return;
+    }
+
+    const results: VerifyRow[] = res.data?.verification?.results ?? [];
+    setNames(files.map((f) => f.name));
+    setSummary(res.data?.verification?.summary ?? null);
+
+    for (let i = 0; i < results.length; i++) {
+      await sleep(420);
+      const r = results[i];
+      setChecks((x) => x.map((v, j) => (j === i ? (r.status === "fail" ? "fail" : "pass") : v)));
+      log({
+        who: "verify_agent",
+        msg: r.rule,
+        res: `${r.status === "pass" ? "✓" : r.status === "fail" ? "✕" : "…"} ${r.evidence}`,
+        kind: r.status === "fail" ? "err" : r.status === "manual" ? "hook" : "ai",
+      });
+    }
+
+    await sleep(320);
+    const verdict: string = res.data?.verification?.verdict ?? "review";
+    log({ who: "verify_agent", msg: "verdict", res: res.data?.verification?.summary ?? verdict, kind: verdict === "revision" ? "err" : "ai" });
+    if (verdict === "revision") {
+      setRevisionNote(results.find((r) => r.status === "fail")?.evidence ?? "a criterion was not met");
+      setStatus("revision");
+    } else {
       setStatus("review");
-    } catch {}
+    }
+    setBusy(false);
+  };
+
+  const sample = async () => {
+    setBusy(true);
+    log({ who: "demo", msg: "sample_delivery.generate()", res: "rendering files in the browser to match the criteria", kind: "hook" });
+    const { buildSampleDelivery } = await import("@/lib/sample");
+    const { files, notes } = await buildSampleDelivery(order.criteria);
+    setBusy(false);
+    await run(files);
   };
 
   const head = status === "revision" ? { c: "var(--peach)", i: "refresh", t: t("dl.revT"), s: t("dl.revB") }
     : status === "verifying" ? { c: "var(--lav)", i: "bot", t: t("dl.verT"), s: t("dl.verB") }
     : { c: "var(--sky)", i: "upload", t: t("dl.t"), s: t("dl.b") };
 
+  /** Thumbnails: uploaded file names when we have them, decorative placeholders otherwise. */
+  const thumbs: { label: string; kind?: ProductKind }[] = names.length
+    ? names.slice(0, 8).map((n) => ({ label: n }))
+    : DELIVERY_PLACEHOLDERS.slice(0, 8).map((p) => ({ label: p.label, kind: p.kind }));
+
   return (
     <div className="card pad rise" style={{ background: status === "revision" ? "var(--peach-l)" : status === "verifying" ? "var(--lav-l)" : "var(--sky-l)" }}>
       <PanelHead color={head.c} icon={head.i} title={head.t} sub={head.s} />
-      {!uploaded ? (
-        <button className="drop" onClick={upload}>
-          <span className="drop-ic float"><Icon name="upload" size={30} /></span>
-          <b style={{ fontSize: 17 }}>{t("dl.drop")}</b>
-          <span className="tiny muted">{t("dl.dropSub")}</span>
-        </button>
+
+      <input
+        ref={input}
+        type="file"
+        multiple
+        className="hidden-input"
+        onChange={(e) => run(Array.from(e.target.files ?? []))}
+      />
+
+      {!picked ? (
+        <>
+          <button className="drop" onClick={() => input.current?.click()} disabled={busy}>
+            <span className="drop-ic float"><Icon name="upload" size={30} /></span>
+            <b style={{ fontSize: 17 }}>{t("dl.drop")}</b>
+            <span className="tiny muted">{t("dl.dropSub")}</span>
+          </button>
+          <div className="row wrap" style={{ gap: 10, marginTop: 12, justifyContent: "center" }}>
+            <button className="btn sm ghost" onClick={sample} disabled={busy}>
+              <Icon name="sparkles" size={15} /> No files handy? Generate a sample delivery
+            </button>
+          </div>
+          <p className="tiny muted" style={{ textAlign: "center", marginTop: 8 }}>
+            Real files only — the agent reads the bytes it receives, and anything it cannot prove is flagged for review.
+          </p>
+        </>
       ) : (
         <div className="dl-grid">
           <div style={{ position: "relative" }}>
-            {scan > 0 && <div key={scan} className="scanline" />}
+            {scan > 0 && busy && <div key={scan} className="scanline" />}
             <div className="thumbs stagger">
-              {DELIVERY.map((k, i) => {
-                const bad = i === BAD && !fixed && (checks[failIdx] === "fail");
-                const ok = checks.every((c) => c === "pass") || (checks[failIdx] === "fail" && i !== BAD);
+              {thumbs.map(({ label, kind }, i) => {
+                const c = checks[Math.min(i, checks.length - 1)] ?? "idle";
+                const bad = c === "fail";
+                const ok = checks.length > 0 && checks.every((x) => x === "pass");
                 return (
-                  <div key={k + (i === BAD && fixed ? "v2" : "")} className={`thumb ${bad ? "bad" : ""}`}>
-                    <Product kind={k} bg={i === BAD && !fixed ? "#D9D4CC" : "#fff"} />
-                    <span className="thumb-name">IMG_{String([1, 4, 7, 9, 11, 14, 16, 19][i]).padStart(3, "0")}</span>
+                  <div key={label + i} className={`thumb ${bad ? "bad" : ""}`}>
+                    {kind ? (
+                      <Product kind={kind} bg="#fff" />
+                    ) : (
+                      <span className="thumb-file"><Icon name={label.toLowerCase().endsWith(".txt") ? "file" : "image"} size={26} /></span>
+                    )}
+                    <span className="thumb-name" title={label}>{label.length > 16 ? `${label.slice(0, 14)}…` : label}</span>
                     {(bad || ok) && <span className="thumb-badge" style={{ background: bad ? "var(--red)" : "var(--green)" }}>{bad ? "!" : "✓"}</span>}
                   </div>
                 );
               })}
-              <div className="thumb more">+12</div>
+              {names.length > 8 && <div className="thumb more">+{names.length - 8}</div>}
             </div>
+
+            <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
+              <button className="btn sm" disabled={busy} onClick={() => input.current?.click()}>
+                <Icon name="upload" size={15} /> {status === "revision" ? t("dl.reupload") : "Upload a new delivery"}
+              </button>
+              {status === "in_escrow" && (
+                <button className="btn sm ghost" disabled={busy} onClick={sample}>
+                  <Icon name="sparkles" size={15} /> Generate sample
+                </button>
+              )}
+            </div>
+            {error && <p className="tiny" style={{ color: "var(--red)", marginTop: 8 }}>{error}</p>}
           </div>
+
           <div className="col" style={{ gap: 8 }}>
             {order.criteria.map((c, i) => (
-              <div key={c.label} className={`chk ${checks[i]}`}>
+              <div key={c.label} className={`chk ${checks[i] ?? "idle"}`}>
                 <span className="chk-st">{checks[i] === "pass" ? "✓" : checks[i] === "fail" ? "✕" : ""}</span>
                 <span style={{ fontWeight: 700, fontSize: 14 }}>{c.label}</span>
               </div>
             ))}
-            {status === "in_escrow" && <button className="btn lav" style={{ marginTop: 6 }} onClick={verify}><Icon name="bot" size={17} /> {t("dl.run")}</button>}
+
+            {busy && <div className="tiny muted">Running the acceptance test…</div>}
+
+            {summary && !busy && (
+              <div className="tiny" style={{ fontWeight: 700 }}>
+                <Icon name="bot" size={14} /> {summary}
+              </div>
+            )}
+
             {status === "revision" && (
               <div className="note pop-in">
                 <b className="row" style={{ gap: 6 }}><Capi size={30} motion="none" mood="think" /> {t("dl.agentSays")}</b>
-                <p style={{ margin: "6px 0 10px", fontSize: 14 }}>{t("dl.agentMsg")}</p>
-                <button className="btn sm peach" style={{ background: "var(--peach)" }} onClick={reupload}><Icon name="upload" size={15} /> {t("dl.reupload")}</button>
+                <p style={{ margin: "6px 0 10px", fontSize: 14 }}>{revisionNote ?? t("dl.agentMsg")}</p>
+                <button className="btn sm peach" style={{ background: "var(--peach)" }} disabled={busy} onClick={() => input.current?.click()}>
+                  <Icon name="upload" size={15} /> {t("dl.reupload")}
+                </button>
               </div>
             )}
           </div>
         </div>
       )}
+
       <style>{`
+        .hidden-input{display:none}
         .drop{width:100%;border:3px dashed var(--ink);border-radius:20px;padding:34px 20px;background:rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;gap:8px;transition:.2s}
         .drop:hover{background:#fff;transform:scale(1.01)}
         .drop-ic{width:62px;height:62px;border-radius:18px;border:2.5px solid var(--ink);background:var(--sky);display:grid;place-items:center;box-shadow:3px 3px 0 var(--ink)}
         .dl-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px}
         .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-        .thumb{aspect-ratio:1;border:2.5px solid var(--ink);border-radius:14px;overflow:hidden;position:relative;background:#fff}
+        .thumb{aspect-ratio:1;border:2.5px solid var(--ink);border-radius:14px;overflow:hidden;position:relative;background:#fff;display:grid;place-items:center}
         .thumb.bad{box-shadow:0 0 0 3px var(--red);animation:shake .45s}
         .thumb.more{display:grid;place-items:center;font-weight:900;border-style:dashed;background:transparent}
-        .thumb-name{position:absolute;left:5px;bottom:3px;font-size:9.5px;font-weight:800;color:var(--ink-2)}
+        .thumb-file{display:grid;place-items:center;color:var(--ink-2)}
+        .thumb-name{position:absolute;left:5px;bottom:3px;font-size:9.5px;font-weight:800;color:var(--ink-2);max-width:92%}
         .thumb-badge{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;border:2px solid var(--ink);color:#fff;font-size:11px;font-weight:900;display:grid;place-items:center;animation:popin .35s var(--spring)}
         .chk{display:flex;align-items:center;gap:10px;padding:10px 12px;border:2.5px solid var(--ink);border-radius:14px;background:var(--paper);transition:background .3s}
         .chk-st{width:24px;height:24px;border-radius:50%;border:2.5px solid var(--ink-3);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:900;flex:none}
@@ -375,7 +519,13 @@ function DeliveryPanel({ order, status, setStatus, log }: { order: Order; status
   );
 }
 
-function ReviewPanel({ order, log, onApproved }: { order: Order; log: (l: Log) => void; onApproved: () => void }) {
+const DELIVERY_PLACEHOLDERS: { kind: ProductKind; label: string }[] = [
+  { kind: "bottle", label: "IMG_001" }, { kind: "mug", label: "IMG_004" }, { kind: "shoe", label: "IMG_007" },
+  { kind: "bag", label: "IMG_009" }, { kind: "candle", label: "IMG_011" }, { kind: "watch", label: "IMG_014" },
+  { kind: "plant", label: "IMG_016" }, { kind: "cap", label: "IMG_019" },
+];
+
+function ReviewPanel({ order, log, onApproved, onRefunded }: { order: Order; log: (l: Log) => void; onApproved: (info?: { payoutBatchId?: string }) => void; onRefunded: () => void }) {
   const { t } = useI18n();
   const sleep = useSleep();
   const TOTAL = 72 * 3600;
@@ -385,16 +535,57 @@ function ReviewPanel({ order, log, onApproved }: { order: Order; log: (l: Log) =
   const hh = String(Math.floor(left / 3600)).padStart(2, "0"), mm = String(Math.floor((left % 3600) / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
   const C = 2 * Math.PI * 64;
 
+  /** Client approves → Payouts v1 releases the escrow to the freelancer. */
   const approve = async () => {
     try {
       setBusy(true);
-      log({ who: "release_policy", msg: "client_approved()", res: `${order.client.name.split(" ")[0]} · ${hh}h left`, kind: "ai" });
-      await sleep(600);
-      log({ who: "paypal", msg: "payouts.create", res: `receiver: sari.w@… · ${order.amount.toFixed(2)} USD`, kind: "pp" });
-      await sleep(900);
-      log({ who: "webhook", msg: "PAYMENT.PAYOUTSBATCH.SUCCESS", res: "order → LUNAS ✓", kind: "hook" });
-      onApproved();
-    } catch {}
+      log({ who: "release_policy", msg: "client_approved()", res: `${order.client.name.split(" ")[0]} · ${hh}h left in the window`, kind: "ai" });
+      const res = await api.release(order.id, "client");
+      if (!res.ok) {
+        log({ who: "paypal", msg: "payouts.create", res: `FAILED: ${res.error}`, kind: "err" });
+        setBusy(false);
+        return;
+      }
+      log({ who: "paypal", msg: "payouts.create", res: `batch ${res.data.payoutBatchId} · ${order.amount.toFixed(2)} ${order.currency}`, kind: "pp" });
+      await sleep(700);
+      log({ who: "webhook", msg: "PAYMENT.PAYOUTSBATCH.SUCCESS", res: `${order.id} → LUNAS ✓`, kind: "hook" });
+      onApproved({ payoutBatchId: res.data.payoutBatchId });
+    } catch {
+      setBusy(false);
+    }
+  };
+
+  /** Mediator branch: verification failed and the client wants the money back. */
+  const refund = async () => {
+    setBusy(true);
+    log({ who: "mediator", msg: "open_dispute()", res: "client contests the delivery", kind: "ai" });
+    const res = await api.refund(order.id, "delivery did not meet the agreed criteria");
+    if (!res.ok) {
+      log({ who: "paypal", msg: "payments.refund", res: `FAILED: ${res.error}`, kind: "err" });
+      setBusy(false);
+      return;
+    }
+    log({ who: "paypal", msg: "payments.refund", res: `${res.data.refund?.status ?? "COMPLETED"} · ${res.data.refund?.id ?? ""}`, kind: "pp" });
+    onRefunded();
+  };
+
+  /** Same policy the server runs on a schedule: if the window elapsed, release. */
+  const autoRelease = async () => {
+    setBusy(true);
+    log({ who: "release_policy", msg: "review_window_check()", res: `72h window · started ${new Date().toISOString().slice(0, 10)}`, kind: "ai" });
+    const res = await api.release(order.id, "auto");
+    if (!res.ok) {
+      log({ who: "release_policy", msg: "hold()", res: `FAILED: ${res.error}`, kind: "err" });
+      setBusy(false);
+      return;
+    }
+    if (!res.data.released) {
+      log({ who: "release_policy", msg: "hold()", res: res.data.reason ?? "window still open", kind: "hook" });
+      setBusy(false);
+      return;
+    }
+    log({ who: "paypal", msg: "payouts.create (auto-release)", res: `batch ${res.data.payoutBatchId}`, kind: "pp" });
+    onApproved({ payoutBatchId: res.data.payoutBatchId });
   };
 
   return (
@@ -417,7 +608,11 @@ function ReviewPanel({ order, log, onApproved }: { order: Order; log: (l: Log) =
           <p className="muted tiny" style={{ fontSize: 14 }}>{t("rev.explain")}</p>
           <div className="demo-box2">
             <div className="kbd" style={{ marginBottom: 8 }}>{t("demo.label")}</div>
-            <button className="btn mint" disabled={busy} onClick={approve}><Icon name="check" size={17} /> {busy ? t("rev.releasing") : t("rev.simulate")}</button>
+            <div className="col" style={{ gap: 8 }}>
+              <button className="btn mint" disabled={busy} onClick={approve}><Icon name="check" size={17} /> {busy ? t("rev.releasing") : t("rev.simulate")}</button>
+              <button className="btn sm ghost" disabled={busy} onClick={autoRelease}><Icon name="clock" size={15} /> Run the release policy (72h check)</button>
+              <button className="btn sm ghost" disabled={busy} onClick={refund}><Icon name="shield" size={15} /> Mediator: refund the client</button>
+            </div>
           </div>
         </div>
       </div>
@@ -426,7 +621,7 @@ function ReviewPanel({ order, log, onApproved }: { order: Order; log: (l: Log) =
   );
 }
 
-function PaidPanel({ order, slam }: { order: Order; slam: boolean }) {
+function PaidPanel({ order, slam, payoutBatchId }: { order: Order; slam: boolean; payoutBatchId?: string }) {
   const { t, money } = useI18n();
   return (
     <div className="card pad rise" style={{ background: "var(--mint-l)" }}>
@@ -435,7 +630,7 @@ function PaidPanel({ order, slam }: { order: Order; slam: boolean }) {
         <div className={`card receipt ${slam ? "shake" : ""}`} style={{ animationDelay: ".25s" }}>
           <div className="kbd">{t("try.receipt")} · {order.id}</div>
           <div className="display" style={{ fontSize: 38, margin: "8px 0 12px" }}>{money(order.amount)}</div>
-          {[[t("try.r.to"), "Sari W. · Yogyakarta"], [t("try.r.from"), `${order.client.name} · ${order.client.city}`], [t("try.r.check"), `${order.criteria.length} / ${order.criteria.length} ✓`], ["Payout", "5UXD2E8A7EBQJ"]].map(([a, b]) => (
+          {[[t("try.r.to"), "Sari W. · Yogyakarta"], [t("try.r.from"), `${order.client.name} · ${order.client.city}`], [t("try.r.check"), `${order.criteria.length} / ${order.criteria.length} ✓`], ["Payout batch", payoutBatchId ?? "—"]].map(([a, b]) => (
             <div key={a} className="row between" style={{ padding: "7px 0", borderBottom: "2px dashed rgba(35,25,66,.15)", fontSize: 13.5, gap: 10 }}>
               <span className="muted">{a}</span><b style={{ textAlign: "right" }}>{b}</b>
             </div>
