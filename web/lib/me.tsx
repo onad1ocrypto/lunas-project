@@ -2,6 +2,18 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+export interface MeSocials {
+  x?: string;
+  linkedin?: string;
+  instagram?: string;
+  website?: string;
+}
+
+export interface MePortfolioItem {
+  label: string;
+  url: string;
+}
+
 export interface MeProfile {
   name: string;
   handle: string;
@@ -9,9 +21,41 @@ export interface MeProfile {
   country: string;
   bio: string;
   tags: string[];
+  /** Avatar as a data URL (already downscaled in the browser). */
+  photo?: string;
+  socials?: MeSocials;
+  portfolio?: MePortfolioItem[];
 }
 
+export const MAX_PORTFOLIO = 6;
+export const SOCIAL_KEYS = ["x", "linkedin", "instagram", "website"] as const;
+export type SocialKey = (typeof SOCIAL_KEYS)[number];
+
 export const ME_COLOR = "var(--peach-l)";
+
+/** Only http(s) links ever reach an href; a bare "x.com/me" gets https:// prefixed. */
+export function normalizeUrl(raw: string): string {
+  const v = (raw || "").trim();
+  if (!v) return "";
+  const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v.replace(/^\/+/, "")}`;
+  try {
+    const u = new URL(withScheme);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    if (!u.hostname.includes(".")) return "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+/** Human-readable host, used on portfolio cards and link chips. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
 
 /** Guest persona — what every visitor gets without signing in. Editable like any profile. */
 export const ME_DEFAULT: MeProfile = {
@@ -61,6 +105,26 @@ function sanitize(raw: string, fallback: MeProfile): MeProfile | null {
   try {
     const p = JSON.parse(raw) as Partial<MeProfile>;
     if (typeof p !== "object" || p === null) return null;
+    const photo =
+      typeof p.photo === "string" && p.photo.startsWith("data:image/") && p.photo.length < 1_600_000
+        ? p.photo
+        : undefined;
+
+    const socials: MeSocials = {};
+    for (const k of SOCIAL_KEYS) {
+      const raw = p.socials && typeof p.socials[k] === "string" ? (p.socials[k] as string) : "";
+      const v = normalizeUrl(raw);
+      if (v) socials[k] = v;
+    }
+
+    const portfolio = Array.isArray(p.portfolio)
+      ? p.portfolio
+          .filter((it): it is MePortfolioItem => !!it && typeof it.url === "string")
+          .map((it) => ({ label: (it.label || "").trim().slice(0, 60), url: normalizeUrl(it.url) }))
+          .filter((it) => it.url)
+          .slice(0, MAX_PORTFOLIO)
+      : [];
+
     return {
       name: typeof p.name === "string" && p.name.trim() ? p.name : fallback.name,
       handle: typeof p.handle === "string" && p.handle.trim() ? p.handle : fallback.handle,
@@ -68,6 +132,9 @@ function sanitize(raw: string, fallback: MeProfile): MeProfile | null {
       country: typeof p.country === "string" && p.country ? p.country : fallback.country,
       bio: typeof p.bio === "string" ? p.bio : fallback.bio,
       tags: Array.isArray(p.tags) ? p.tags.filter((x) => typeof x === "string").slice(0, 6) : fallback.tags,
+      photo,
+      socials: Object.keys(socials).length ? socials : undefined,
+      portfolio: portfolio.length ? portfolio : undefined,
     };
   } catch {
     return null;

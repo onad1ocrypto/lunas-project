@@ -119,6 +119,7 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 
 - [x] Trilingual UI (EN / 中文 / ID), three themes, order flows, public client page
 - [x] Two ways in: guest mode (SASAM) and **Log in with PayPal** (Identity API) sessions, per-account profiles
+- [x] Profile: photo upload (resized in the browser), social links (X, LinkedIn, Instagram, website) and a portfolio list that clients see on the public page
 - [x] PayPal REST integration: Orders v2 create + capture, Payouts v1 release, Payments v1 refund, webhook signature verification
 - [x] Contract / Verification / Mediator agents with LLM + local fallback
 - [ ] Durable storage for orders and the webhook buffer (currently in-memory demo data)

@@ -60,7 +60,7 @@ export function MoneyRail({ order, status }: { order: Order; status: Status }) {
           <span className="avatar" style={{ width: 46, height: 46, background: "var(--ink)", color: "var(--lemon)" }}><Icon name="lock" size={20} /></span>
         </Node>
         <Node i={2} name={me.name.split(" ")[0] + " · " + t("rail.you")} sub={<>{me.city} <Country code={me.country} /></>}>
-          <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={46} />
+          <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={46} photo={me.photo} />
         </Node>
       </div>
       <div className="tiny" style={{ textAlign: "center", marginTop: 12, fontWeight: 700, color: status === "paid" ? "var(--green)" : "var(--ink-2)" }}>

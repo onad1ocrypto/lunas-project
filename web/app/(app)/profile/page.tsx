@@ -1,14 +1,55 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LANGS, useI18n } from "@/lib/i18n";
 import { THEMES, useTheme } from "@/lib/theme";
 import { ORDERS } from "@/lib/data";
-import { initialsOf, ME_COLOR, useMe, type MeProfile } from "@/lib/me";
+import {
+  hostOf,
+  normalizeUrl,
+  initialsOf,
+  MAX_PORTFOLIO,
+  ME_COLOR,
+  SOCIAL_KEYS,
+  useMe,
+  type MePortfolioItem,
+  type MeProfile,
+  type SocialKey,
+} from "@/lib/me";
 import { Icon } from "@/components/Icon";
 import { Avatar, Country, Kicker, Toast } from "@/components/ui";
+
+/** Downscale an uploaded picture to a 512px JPEG data URL — small enough to keep in localStorage. */
+async function toAvatarDataUrl(file: File): Promise<string | null> {
+  if (!file.type.startsWith("image/")) return null;
+  const dataUrl = await new Promise<string>((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result));
+    fr.onerror = () => rej(new Error("read"));
+    fr.readAsDataURL(file);
+  }).catch(() => null);
+  if (!dataUrl) return null;
+  const img = await new Promise<HTMLImageElement | null>((res) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => res(null);
+    i.src = dataUrl;
+  });
+  if (!img) return null;
+  const MAXPX = 512;
+  const scale = Math.min(1, MAXPX / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
 
 export default function ProfilePage() {
   const { t, money, lang, setLang } = useI18n();
@@ -19,8 +60,34 @@ export default function ProfilePage() {
   const [draft, setDraft] = useState<MeProfile>(me);
   const [toast, setToast] = useState("");
   const [welcomed, setWelcomed] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const ping = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2600); };
   const asPaypal = session.mode === "paypal";
+  const portfolio = me.portfolio ?? [];
+  const socialsOf = (p: MeProfile) =>
+    SOCIAL_KEYS.filter((k) => p.socials && p.socials[k]).map((k) => ({ key: k, url: p.socials![k] as string }));
+
+  const pickPhoto = () => fileRef.current?.click();
+  const onPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPhotoBusy(true);
+    const dataUrl = await toAvatarDataUrl(file);
+    setPhotoBusy(false);
+    if (!dataUrl) {
+      ping(t("me.photo.err"));
+      return;
+    }
+    setDraft((d) => ({ ...d, photo: dataUrl }));
+    ping(t("me.photo.ready"));
+  };
+  const setSocial = (k: SocialKey, v: string) => setDraft((d) => ({ ...d, socials: { ...(d.socials ?? {}), [k]: v } }));
+  const setItem = (i: number, patch: Partial<MePortfolioItem>) =>
+    setDraft((d) => ({ ...d, portfolio: (d.portfolio ?? []).map((it, idx) => (idx === i ? { ...it, ...patch } : it)) }));
+  const addItem = () => setDraft((d) => ({ ...d, portfolio: [...(d.portfolio ?? []), { label: "", url: "" }] }));
+  const removeItem = (i: number) => setDraft((d) => ({ ...d, portfolio: (d.portfolio ?? []).filter((_, idx) => idx !== i) }));
   const pp = session.paypal;
 
   /* Landing here right after the PayPal round trip -> greet the user by name. */
@@ -44,6 +111,18 @@ export default function ProfilePage() {
 
   const TAG_COLORS = ["var(--pink-l)", "var(--sky-l)", "var(--lemon-l)", "var(--mint-l)"];
   const save = () => {
+    /* Normalise here, not only when reading storage: an unnormalised value would hit
+       the DOM as a raw href first (a javascript: URL in an href is an XSS vector). */
+    const cleanedSocials = SOCIAL_KEYS.reduce<NonNullable<MeProfile["socials"]>>((acc, k) => {
+      const url = normalizeUrl((draft.socials?.[k] as string) ?? "");
+      if (url) acc[k] = url;
+      return acc;
+    }, {});
+    const cleanedPortfolio = (draft.portfolio ?? [])
+      .map((it) => ({ label: it.label.trim().slice(0, 60), url: normalizeUrl(it.url) }))
+      .filter((it) => it.url)
+      .slice(0, MAX_PORTFOLIO);
+
     const clean: MeProfile = {
       name: draft.name.trim() || me.name,
       handle: draft.handle.trim().toLowerCase().replace(/^@/, "").replace(/[^a-z0-9-_]+/g, "-").replace(/^-+|-+$/g, "") || me.handle,
@@ -51,6 +130,9 @@ export default function ProfilePage() {
       country: (draft.country.trim() || me.country).toUpperCase().slice(0, 2),
       bio: draft.bio.trim(),
       tags: draft.tags.map((s) => s.trim()).filter(Boolean).slice(0, 6),
+      photo: draft.photo,
+      socials: cleanedSocials,
+      portfolio: cleanedPortfolio,
     };
     setMe(clean);
     setDraft(clean);
@@ -95,7 +177,7 @@ export default function ProfilePage() {
         />
         <div style={{ padding: "0 24px 22px", marginTop: -46, display: "flex", gap: 18, alignItems: "flex-end", flexWrap: "wrap" }}>
           <span style={{ border: "3px solid var(--ink)", borderRadius: "50%", boxShadow: "4px 4px 0 var(--ink)", lineHeight: 0 }}>
-            <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={92} />
+            <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={92} photo={me.photo} />
           </span>
           <div className="col" style={{ gap: 6, paddingBottom: 4 }}>
             <div className="row wrap" style={{ gap: 10 }}>
@@ -132,6 +214,26 @@ export default function ProfilePage() {
         {editing && (
           <div className="col pop-in" style={{ gap: 14, padding: "4px 24px 24px", borderTop: "2.5px dashed var(--ink-3)" }}>
             <b style={{ fontFamily: "var(--font-display)", fontSize: 18, paddingTop: 14 }}>{t("me.edit")}</b>
+
+            {/* profile photo */}
+            <div className="row wrap" style={{ gap: 16, alignItems: "center" }}>
+              <Avatar p={{ initials: initialsOf(draft.name || me.name), color: ME_COLOR }} size={84} photo={draft.photo} />
+              <div className="col" style={{ gap: 8 }}>
+                <div className="row wrap" style={{ gap: 8 }}>
+                  <button className="btn sm" type="button" onClick={pickPhoto} disabled={photoBusy}>
+                    <Icon name="upload" size={15} /> {photoBusy ? t("me.photo.busy") : t("me.photo.upload")}
+                  </button>
+                  {draft.photo && (
+                    <button className="btn sm" type="button" onClick={() => setDraft({ ...draft, photo: undefined })}>
+                      <Icon name="x" size={15} /> {t("me.photo.remove")}
+                    </button>
+                  )}
+                </div>
+                <span className="tiny muted" style={{ maxWidth: 360, fontWeight: 700 }}>{t("me.photo.hint")}</span>
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} style={{ display: "none" }} aria-label={t("me.photo.upload")} />
+            </div>
+
             <div className="pub-form">
               <div className="field">
                 <label htmlFor="f-name">{t("me.f.name")}</label>
@@ -160,11 +262,119 @@ export default function ProfilePage() {
               <label htmlFor="f-tags">{t("me.f.tags")}</label>
               <input id="f-tags" className="input" value={draft.tags.join(", ")} onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
             </div>
+
+            {/* links clients can open */}
+            <div className="col" style={{ gap: 10, borderTop: "2.5px dashed var(--ink-3)", paddingTop: 16 }}>
+              <b style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{t("me.f.links")}</b>
+              <div className="pub-form">
+                {SOCIAL_KEYS.map((k) => (
+                  <div className="field" key={k}>
+                    <label htmlFor={`f-s-${k}`}>{t(`me.f.${k}`)}</label>
+                    <input
+                      id={`f-s-${k}`}
+                      className="input"
+                      placeholder={k === "x" ? "x.com/yourname" : k === "linkedin" ? "linkedin.com/in/yourname" : k === "instagram" ? "instagram.com/yourname" : "yoursite.com"}
+                      value={(draft.socials?.[k] as string) ?? ""}
+                      onChange={(e) => setSocial(k, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* portfolio */}
+            <div className="col" style={{ gap: 10, borderTop: "2.5px dashed var(--ink-3)", paddingTop: 16 }}>
+              <b style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{t("me.f.portfolio")}</b>
+              <div className="col" style={{ gap: 8 }}>
+                {(draft.portfolio ?? []).map((it, i) => (
+                  <div className="row wrap" key={i} style={{ gap: 8 }}>
+                    <input
+                      id={`f-pf-title-${i}`}
+                      className="input"
+                      style={{ flex: "1 1 34%", minWidth: 160 }}
+                      placeholder={t("me.portfolio.title")}
+                      value={it.label}
+                      onChange={(e) => setItem(i, { label: e.target.value })}
+                      aria-label={t("me.portfolio.title")}
+                    />
+                    <input
+                      id={`f-pf-url-${i}`}
+                      className="input"
+                      style={{ flex: "2 1 46%", minWidth: 200 }}
+                      placeholder="yourportfolio.com/project"
+                      value={it.url}
+                      onChange={(e) => setItem(i, { url: e.target.value })}
+                      aria-label={t("me.portfolio.url")}
+                    />
+                    <button className="btn sm" type="button" onClick={() => removeItem(i)} aria-label={t("me.portfolio.remove")}>
+                      <Icon name="x" size={15} />
+                    </button>
+                  </div>
+                ))}
+                {(draft.portfolio ?? []).length < MAX_PORTFOLIO && (
+                  <button className="btn sm" type="button" onClick={addItem} style={{ alignSelf: "flex-start" }}>
+                    <Icon name="plus" size={15} /> {t("me.portfolio.add")}
+                  </button>
+                )}
+                <span className="tiny muted" style={{ fontWeight: 700 }}>{t("me.portfolio.hint")}</span>
+              </div>
+            </div>
             <div className="row wrap" style={{ gap: 10 }}>
               <button className="btn lemon" onClick={save}><Icon name="check" size={16} /> {t("me.save")}</button>
               <button className="btn" onClick={() => setEditing(false)}><Icon name="x" size={15} /> {t("me.cancel")}</button>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* portfolio & links — exactly what clients see on the public page */}
+      <div className="card pad col" id="portfolio" style={{ gap: 14, scrollMarginTop: 90 }}>
+        <div className="row between wrap" style={{ gap: 12 }}>
+          <div className="row" style={{ gap: 10 }}>
+            <span style={{ width: 38, height: 38, flex: "none", borderRadius: 12, border: "2.5px solid var(--ink)", background: "var(--mint-l)", display: "grid", placeItems: "center" }}>
+              <Icon name="image" size={18} />
+            </span>
+            <div className="col" style={{ gap: 2 }}>
+              <b style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>{t("me.links.title")}</b>
+              <span className="tiny muted" style={{ fontWeight: 700 }}>{t("me.links.body")}</span>
+            </div>
+          </div>
+          <Link className="btn sm" href={`/to/${me.handle}`}><Icon name="eye" size={15} /> {t("me.menu.public")}</Link>
+        </div>
+
+        {socialsOf(me).length > 0 && (
+          <div className="row wrap" style={{ gap: 8 }}>
+            {socialsOf(me).map((s) => (
+              <a key={s.key} className="chip" href={s.url} target="_blank" rel="noreferrer noopener" style={{ gap: 6, fontWeight: 800 }}>
+                <Icon name="link" size={13} /> {t(`me.f.${s.key}`)}
+              </a>
+            ))}
+          </div>
+        )}
+
+        {portfolio.length > 0 ? (
+          <div className="col" style={{ gap: 8 }}>
+            {portfolio.map((it, i) => (
+              <a
+                key={i}
+                href={it.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="row between"
+                style={{ gap: 12, padding: "10px 14px", border: "2.5px solid var(--ink)", borderRadius: 14, background: "var(--paper)", textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}
+              >
+                <span className="col" style={{ gap: 1, minWidth: 0 }}>
+                  <b style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label || hostOf(it.url)}</b>
+                  <span className="tiny muted">{hostOf(it.url)}</span>
+                </span>
+                <span className="row" style={{ gap: 6, fontWeight: 800, fontSize: 13, flex: "none" }}>
+                  {t("me.links.open")} <Icon name="right" size={15} />
+                </span>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p className="tiny muted" style={{ fontWeight: 700 }}>{t("me.links.empty")}</p>
         )}
       </div>
 
