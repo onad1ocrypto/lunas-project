@@ -21,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { href: "/orders?tab=from_client", match: "/orders", icon: "inbox", label: t("nav.orders"), color: "var(--sky)", badge: todo },
     { href: "/orders/new", icon: "send", label: t("nav.newOrder"), color: "var(--pink)" },
     { href: `/to/${me.handle}`, icon: "link", label: t("nav.myPage"), color: "var(--mint)" },
+    { href: "/profile#portfolio", icon: "image", label: t("nav.portfolio"), color: "var(--lav)" },
     { href: "/profile", icon: "user", label: t("nav.profile"), color: "var(--peach)" },
   ];
   const isActive = (n: (typeof nav)[number]) =>
@@ -105,11 +106,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           .search{display:none}
           .topbar{padding:12px 16px}
           .content{padding:18px 16px 110px}
-          .bottom-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:10px;right:10px;bottom:10px;z-index:30;background:var(--paper);border:2.5px solid var(--ink);border-radius:20px;box-shadow:4px 4px 0 var(--ink);padding:6px}
+          .bottom-nav{display:grid;grid-template-columns:repeat(6,1fr);position:fixed;left:10px;right:10px;bottom:10px;z-index:30;background:var(--paper);border:2.5px solid var(--ink);border-radius:20px;box-shadow:4px 4px 0 var(--ink);padding:6px}
           .bottom-nav a{display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:800}
           .bottom-nav a span{width:40px;height:32px;border-radius:10px;display:grid;place-items:center;border:2px solid transparent}
           .bottom-nav a.on span{border-color:var(--ink)}
-          .bottom-nav small{font-size:10px;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+          .bottom-nav small{font-size:9.5px;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
         }
       `}</style>
     </div>

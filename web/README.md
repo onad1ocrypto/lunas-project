@@ -25,6 +25,7 @@ Works with **no credentials**: PayPal routes answer `503 { enabled: false }` and
 | `/orders/[id]` | Order detail with live flow: accept → pay → deliver → AI check → review → LUNAS stamp |
 | `/to/[handle]` | Public order page clients use to send a request (e.g. `/to/sasam`) |
 | `/signin` | Two ways in: **guest mode** (shared SASAM demo profile) or **Log in with PayPal** (sandbox) |
+| `/profile` | Your identity: photo upload, social links, portfolio list (all editable, per identity) |
 
 ## API
 
@@ -63,7 +64,7 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 
 - `lib/dict.ts` — all UI text in 3 languages
 - `lib/i18n.tsx` — language provider, `t()`, money/date formatting per locale
-- `lib/me.tsx` — identity + profile: guest persona (SASAM) or the PayPal account in session; profiles stored per identity
+- `lib/me.tsx` — identity + profile: guest persona (SASAM) or the PayPal account in session; profiles stored per identity, including photo (data URL), social links and portfolio items. `normalizeUrl()` keeps only http(s) links out of user input
 - `lib/session.ts` — server-only: HMAC-signed session cookie, OAuth state, Identity API calls
 - `lib/data.ts` — mock ledger + local brief parser (the fallback the Contract Agent uses)
 - `lib/agent.ts` — Contract / Verification / Mediator agents (LLM + local fallback)

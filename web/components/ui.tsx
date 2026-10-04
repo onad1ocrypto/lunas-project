@@ -83,7 +83,7 @@ export function ProfileMenu() {
         aria-expanded={open}
         style={{ borderRadius: "50%", lineHeight: 0, boxShadow: open ? "0 0 0 3px var(--lemon)" : "none", transition: "box-shadow .2s" }}
       >
-        <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={38} />
+        <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={38} photo={me.photo} />
       </button>
       {open && (
         <>
@@ -93,7 +93,7 @@ export function ProfileMenu() {
             style={{ position: "absolute", right: 0, top: "calc(100% + 10px)", zIndex: 41, width: 252, padding: 8, display: "flex", flexDirection: "column", gap: 2 }}
           >
             <div className="row" style={{ gap: 10, padding: "8px 10px 12px", borderBottom: "2px dashed var(--ink-3)", marginBottom: 4 }}>
-              <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={40} />
+              <Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={40} photo={me.photo} />
               <div className="col" style={{ gap: 2, minWidth: 0 }}>
                 <b style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>{me.name}</b>
                 <span className="tiny muted" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -179,7 +179,15 @@ export function LangSwitch({ compact = false }: { compact?: boolean }) {
 }
 
 /* ---------------- Avatar + country ---------------- */
-export function Avatar({ p, size = 40 }: { p: Pick<Person, "initials" | "color">; size?: number }) {
+export function Avatar({ p, size = 40, photo }: { p: Pick<Person, "initials" | "color">; size?: number; photo?: string }) {
+  if (photo) {
+    return (
+      <span className="avatar" style={{ width: size, height: size, background: p.color, overflow: "hidden" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      </span>
+    );
+  }
   return (
     <span className="avatar" style={{ width: size, height: size, background: p.color, fontSize: size * 0.36 }}>
       {p.initials}

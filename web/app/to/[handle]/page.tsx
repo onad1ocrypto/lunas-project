@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { type Criterion } from "@/lib/data";
-import { initialsOf, ME_COLOR, useMe } from "@/lib/me";
+import { hostOf, initialsOf, ME_COLOR, SOCIAL_KEYS, useMe } from "@/lib/me";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter } from "@/components/DraftContract";
@@ -49,7 +49,7 @@ export default function PublicOrderPage() {
             ))}
           </div>
           <div style={{ padding: "0 22px 22px" }}>
-            <div style={{ marginTop: -36, position: "relative", zIndex: 2 }}><Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={78} /></div>
+            <div style={{ marginTop: -36, position: "relative", zIndex: 2 }}><Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={78} photo={me.photo} /></div>
             <h1 style={{ fontSize: 28, marginTop: 10 }}>{me.name}</h1>
             <div className="row tiny muted" style={{ gap: 6, marginTop: 4, fontWeight: 700 }}>
               <Icon name="globe" size={14} /> {me.city ? `${me.city} ` : ""}{me.country ? <Country code={me.country} /> : null} · EN / ID / 中文
@@ -58,6 +58,42 @@ export default function PublicOrderPage() {
             <div className="row wrap" style={{ gap: 8, marginTop: 14 }}>
               {skills.map((x) => <span key={x.s} className="chip" style={{ background: x.c }}>{x.s}</span>)}
             </div>
+
+            {/* social links the freelancer added */}
+            {(me.socials ? SOCIAL_KEYS.filter((k) => me.socials![k]) : []).length > 0 && (
+              <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
+                {SOCIAL_KEYS.filter((k) => me.socials && me.socials[k]).map((k) => (
+                  <a key={k} className="chip" href={me.socials![k]} target="_blank" rel="noreferrer noopener" style={{ gap: 6, fontWeight: 800, textDecoration: "none" }}>
+                    <Icon name="link" size={13} /> {t(`me.f.${k}`)}
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {/* portfolio: what the client is here to see */}
+            {(me.portfolio?.length ?? 0) > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <span className="sticker" style={{ background: "var(--mint)", fontSize: 13, transform: "rotate(-2deg)" }}>{t("pub.portfolio")}</span>
+                <div className="col" style={{ gap: 8, marginTop: 12 }}>
+                  {me.portfolio!.map((it, i) => (
+                    <a
+                      key={i}
+                      href={it.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="row between"
+                      style={{ gap: 10, padding: "9px 12px", border: "2.5px solid var(--ink)", borderRadius: 14, background: "var(--paper)", textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}
+                    >
+                      <span className="col" style={{ gap: 1, minWidth: 0 }}>
+                        <b style={{ fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.label || hostOf(it.url)}</b>
+                        <span className="tiny muted">{hostOf(it.url)}</span>
+                      </span>
+                      <Icon name="right" size={16} />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="pub-stats">
               <div><b className="display">4.9</b><span><Icon name="star" size={13} /> {t("pub.rating")}</span></div>
               <div><b className="display">86</b><span>{t("pub.done")}</span></div>
