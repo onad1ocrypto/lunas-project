@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
  * Verification Agent — the real one.
  *
  * The browser measured the uploaded files (counts, dimensions, how white the
- * background actually is) and sends those numbers; this route decides. It never
+ * background actually is, a video's duration and pixel size, whether its audio
+ * track is there and how loud) and sends those numbers; this route decides. It never
  * invents a verdict for a criterion it could not measure: those come back as
  * `manual` with a note, and the client is told which ones still need an eye.
  */
@@ -35,6 +36,9 @@ export async function POST(req: Request) {
     avgSaturation: typeof f?.avgSaturation === "number" ? f.avgSaturation : undefined,
     alpha: typeof f?.alpha === "boolean" ? f.alpha : undefined,
     text: typeof f?.text === "string" ? f.text.slice(0, 20_000) : undefined,
+    durationSec: Number.isFinite(Number(f?.durationSec)) ? Number(f?.durationSec) : undefined,
+    dbfs: Number.isFinite(Number(f?.dbfs)) ? Number(f?.dbfs) : undefined,
+    hasAudio: typeof f?.hasAudio === "boolean" ? f.hasAudio : undefined,
     pages: Number(f?.pages) || undefined,
     dpi: Number(f?.dpi) || undefined,
   })) as FileFacts[];

@@ -39,6 +39,7 @@ export default function OrderDetail() {
   const [justPaid, setJustPaid] = useState(false);
   const [capture, setCapture] = useState("");
   const [refundInfo, setRefundInfo] = useState<{ percent: number; id: string; status: string; sim: boolean } | null>(null);
+  const [verdict, setVerdict] = useState<{ measured: number; manual: number; failed: number } | null>(null);
 
   const log = (l: Log) => setLogs((x) => [...x, l]);
   const flash = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
@@ -96,10 +97,10 @@ export default function OrderDetail() {
               onPaid={() => { setStatus("in_escrow"); flash(t("toast.funded")); }} />
           )}
           {(status === "in_escrow" || status === "verifying" || status === "revision") && (
-            <DeliveryPanel order={order} status={status} setStatus={setStatus} log={log} />
+            <DeliveryPanel order={order} status={status} setStatus={setStatus} log={log} onVerdict={setVerdict} />
           )}
           {status === "review" && (
-            <ReviewPanel order={order} log={log}
+            <ReviewPanel order={order} log={log} verdict={verdict}
               onApproved={() => { setStatus("paid"); setJustPaid(true); setFire((f) => f + 1); }} />
           )}
           {status === "paid" && <PaidPanel order={order} slam={justPaid} refundInfo={refundInfo} />}
@@ -304,7 +305,13 @@ function PaymentPanel({ order, log, onPaid, onCapture }: { order: Order; log: (l
   );
 }
 
-function ReviewPanel({ order, log, onApproved }: { order: Order; log: (l: Log) => void; onApproved: () => void }) {
+function ReviewPanel({ order, log, verdict, onApproved }: {
+  order: Order;
+  log: (l: Log) => void;
+  /** Set when this session ran the check; absent on a later visit. */
+  verdict: { measured: number; manual: number; failed: number } | null;
+  onApproved: () => void;
+}) {
   const { t } = useI18n();
   const sleep = useSleep();
   const TOTAL = 72 * 3600;
@@ -328,7 +335,16 @@ function ReviewPanel({ order, log, onApproved }: { order: Order; log: (l: Log) =
 
   return (
     <div className="card pad rise" style={{ background: "var(--lav-l)" }}>
-      <PanelHead color="var(--lav)" icon="clock" title={t("rev.t")} sub={t("rev.b", { name: order.client.name.split(" ")[0] })} />
+      <PanelHead
+        color="var(--lav)"
+        icon="clock"
+        title={verdict && verdict.manual ? t("rev.tEye", { n: String(verdict.manual) }) : t("rev.t")}
+        sub={
+          verdict && verdict.manual
+            ? t("rev.eye", { name: order.client.name.split(" ")[0], n: String(verdict.manual), m: String(verdict.measured) })
+            : t("rev.b", { name: order.client.name.split(" ")[0] })
+        }
+      />
       <div className="row wrap" style={{ gap: 26, justifyContent: "center" }}>
         <div style={{ position: "relative", width: 160, height: 160 }}>
           <svg width="160" height="160" style={{ transform: "rotate(-90deg)" }}>

@@ -76,13 +76,14 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 - `lib/profile.ts` — pure profile model + `sanitizeProfile()`/`normalizeUrl()` shared by browser and server
 - `lib/store.ts` — server-only Supabase access for published profiles
 - `lib/insights.ts` — the three tables behind the Insights dashboard (orders, money events, agent runs)
-- `lib/verify.ts` — the rule engine: criteria strings into measured verdicts, and the ones it will not pretend to measure
-- `components/DeliveryPanel.tsx` — real file upload; measures pixels in the browser, draws the sample delivery
+- `lib/verify.ts` — the rule engine: criteria strings into measured verdicts, and the ones it will not pretend to measure (images, documents, video duration/size and audio level included)
+- `components/DeliveryPanel.tsx` — real file upload; measures pixels, video metadata and audio levels in the browser, draws the photo sample, and records a real 9:16 sample reel with `MediaRecorder` for video jobs
 - `components/AgStudioView.tsx` — the AG Studio instance, its Lunas theme and the starter report
 - `lib/data.ts` — mock ledger + local brief parser (the fallback the Contract Agent uses)
 - `lib/agent.ts` — Contract / Verification / Mediator agents (LLM + local fallback)
 - `lib/paypal.ts` — PayPal REST client: Orders v2, Payouts v1, Refunds, webhook verification. Reviewed against the **APIMatic PayPal Server SDK Context Plugin** (TypeScript skills) — see [`../docs/apimatic-context-plugin.md`](../docs/apimatic-context-plugin.md)
 - `scripts/uji-transport-paypal.sh` — offline proof for the above: stubs PayPal, asserts 21 transport behaviours (no credentials, no network)
+- `scripts/uji-verify-video.sh` — offline proof for the rule engine: 34 assertions over video/audio/photo/document criteria (no browser needed)
 - `lib/webhook.ts` — in-memory buffer so the Agent activity panel can show real push events
 - `components/` — Capi mascot, money rail, UI primitives, app shell
 
