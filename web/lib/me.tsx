@@ -81,13 +81,16 @@ function readProfile(session: Session): MeProfile {
     const key = keyOf(identityOf(session));
     const raw = localStorage.getItem(key);
     if (raw) return sanitize(raw, fallback) ?? fallback;
-    /* one-time migration from the single-profile layout used before sign-in existed */
+    /* one-time migration from the single-profile layout used before sign-in existed.
+       The old *default* persona (Sari Wulandari / Yogyakarta) is stale demo data, not a
+       user edit, so it is dropped in favour of the SASAM persona. */
     if (session.mode === "guest") {
       const legacy = localStorage.getItem(LEGACY_KEY);
       if (legacy) {
         const migrated = sanitize(legacy, fallback);
         localStorage.removeItem(LEGACY_KEY);
-        if (migrated) {
+        const wasOldDefault = migrated?.name === "Sari Wulandari" && migrated?.city === "Yogyakarta";
+        if (migrated && !wasOldDefault) {
           localStorage.setItem(key, JSON.stringify(migrated));
           return migrated;
         }
