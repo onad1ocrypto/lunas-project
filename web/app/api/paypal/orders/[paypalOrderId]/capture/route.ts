@@ -1,4 +1,5 @@
 import { captureEscrow } from "@/lib/server/flow";
+import { withTicket } from "@/lib/server/ticket";
 import { fail, json, rateLimit } from "@/lib/server/http";
 import { getOrderById } from "@/lib/server/store";
 import { hydrateFromTicket } from "@/lib/server/resolve";
@@ -30,14 +31,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ paypalOrderId:
 
     const res = await captureEscrow(lunasOrderId, paypalOrderId);
     const order = res.order ?? (await getOrderById(lunasOrderId));
-    return json({
-      ok: true,
-      alreadyCaptured: res.alreadyCaptured,
-      captureId: res.captureId,
-      status: order?.status,
-      paypal: order?.paypal,
-      next: "POST /api/orders/:id/deliverables once the work is done",
-    });
+    return json(
+      withTicket({
+        ok: true,
+        alreadyCaptured: res.alreadyCaptured,
+        captureId: res.captureId,
+        orderId: lunasOrderId,
+        status: order?.status,
+        paypal: order?.paypal,
+        order,
+        next: "POST /api/orders/:id/deliverables once the work is done",
+      }),
+    );
   } catch (e) {
     return fail(e);
   }

@@ -2,6 +2,7 @@ import { startEscrow } from "@/lib/server/flow";
 import { fail, json, originOf, rateLimit } from "@/lib/server/http";
 import { paypalMode } from "@/lib/server/paypal";
 import { hydrateFromTicket } from "@/lib/server/resolve";
+import { withTicket } from "@/lib/server/ticket";
 import { grossOf } from "@/lib/server/flow";
 
 export const runtime = "nodejs";
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
     const res = await startEscrow(body.orderId, origin);
     if (!res.order) return json({ ok: false, error: `Order ${body.orderId} not found` }, 404);
 
-    return json({
+    return json(withTicket({
       ok: true,
       mode: res.mode,
       reused: res.reused,
@@ -36,8 +37,9 @@ export async function POST(req: Request) {
       currency: res.order.currency,
       status: res.order.status,
       simulated: res.mode === "simulated",
+      order: res.order,
       next: `POST /api/paypal/orders/${res.paypalOrderId}/capture`,
-    });
+    }));
   } catch (e) {
     return fail(e);
   }

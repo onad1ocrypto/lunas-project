@@ -1,3 +1,4 @@
+import { withTicket } from "@/lib/server/ticket";
 import { fail, json, rateLimit } from "@/lib/server/http";
 import { submitDelivery } from "@/lib/server/flow";
 import { hydrateFromTicket } from "@/lib/server/resolve";
@@ -50,7 +51,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const { order, verification } = await submitDelivery(id, uploads);
-    return json({ ok: true, verification, order });
+    return json(withTicket({ ok: true, verification, order }));
   } catch (e) {
     return fail(e);
   }

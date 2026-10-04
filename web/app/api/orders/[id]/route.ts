@@ -1,5 +1,6 @@
 import { updateOrder } from "@/lib/server/store";
 import { resolveOrder } from "@/lib/server/resolve";
+import { withTicket } from "@/lib/server/ticket";
 import { fail, json } from "@/lib/server/http";
 import { autoReleaseIfDue } from "@/lib/server/flow";
 
@@ -32,11 +33,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (body.action === "accept") {
       if (order.status !== "request") return json({ ok: false, error: `Order is ${order.status}` }, 409);
       const updated = await updateOrder(id, { status: "awaiting_payment", events: [...order.events, { at: new Date().toISOString(), who: "contract", msg: "accepted by freelancer", res: "payment link sent to client", kind: "hook" }] });
-      return json({ ok: true, order: updated });
+      return json(withTicket({ ok: true, order: updated }));
     }
     if (body.action === "decline") {
       const updated = await updateOrder(id, { status: "declined", events: [...order.events, { at: new Date().toISOString(), who: "contract", msg: "declined", kind: "err" }] });
-      return json({ ok: true, order: updated });
+      return json(withTicket({ ok: true, order: updated }));
     }
     if (body.action === "auto_release_check") {
       return json({ ok: true, ...(await autoReleaseIfDue(id)) });
