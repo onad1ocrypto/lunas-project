@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { type Criterion } from "@/lib/data";
-import { hostOf, initialsOf, ME_COLOR, SOCIAL_KEYS, useMe, type MeProfile } from "@/lib/me";
+import { hostOf, initialsOf, locationOf, ME_COLOR, SOCIAL_KEYS, useMe, type MeProfile } from "@/lib/me";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter } from "@/components/DraftContract";
@@ -13,7 +13,7 @@ import { Avatar, Confetti, Country, LangSwitch, Logo, Product, ThemeSwitch } fro
 
 
 export default function PublicOrderPage() {
-  const { t, money } = useI18n();
+  const { t, money, lang } = useI18n();
   const { me } = useMe();
   const params = useParams<{ handle: string }>();
   const handle = (params?.handle ?? "").toString();
@@ -73,7 +73,7 @@ export default function PublicOrderPage() {
             <div style={{ marginTop: -36, position: "relative", zIndex: 2 }}><Avatar p={{ initials: initialsOf(shown.name), color: ME_COLOR }} size={78} photo={shown.photo} /></div>
             <h1 style={{ fontSize: 28, marginTop: 10 }}>{shown.name}</h1>
             <div className="row tiny muted" style={{ gap: 6, marginTop: 4, fontWeight: 700 }}>
-              <Icon name="globe" size={14} /> {shown.city ? `${shown.city} ` : ""}{shown.country ? <Country code={shown.country} /> : null} · EN / ID / 中文
+              <Icon name="globe" size={14} /> {locationOf(shown, lang)}{shown.city && shown.country ? <> <Country code={shown.country} /></> : null} · EN / ID / 中文
             </div>
             <p style={{ marginTop: 12, lineHeight: 1.55 }}>{shown.bio}</p>
             <div className="row wrap" style={{ gap: 8, marginTop: 14 }}>

@@ -47,6 +47,28 @@ export function normalizeUrl(raw: string): string {
   }
 }
 
+/**
+ * Country code -> readable name in the reader's language ("ID" -> "Indonesia"),
+ * used when a profile has no city. Falls back to the code itself.
+ */
+export function countryName(code: string, locale = "en"): string {
+  const c = (code || "").trim().toUpperCase();
+  if (!c) return "";
+  try {
+    const dn = new Intl.DisplayNames([locale], { type: "region" });
+    return dn.of(c) || c;
+  } catch {
+    return c;
+  }
+}
+
+/** "Wonogiri" or, without a city, "Indonesia" — never an empty line. */
+export function locationOf(p: { city?: string; country?: string }, locale = "en"): string {
+  const city = (p.city || "").trim();
+  if (city) return city;
+  return countryName(p.country || "", locale);
+}
+
 /** Human-readable host, used on portfolio cards and link chips. */
 export function hostOf(url: string): string {
   try {
@@ -110,8 +132,8 @@ export function sanitizeProfile(input: unknown, fallback: MeProfile): MeProfile 
 export const ME_PROFILE_FALLBACK: MeProfile = {
   name: "SASAM",
   handle: "sasam",
-  city: "Wonogiri",
+  city: "",
   country: "ID",
-  bio: "Product photo editor & designer in Wonogiri, Indonesia. This is the shared demo profile — edit every field, or sign in with a PayPal sandbox account to make the profile your own.",
+  bio: "Product photo editor & designer based in Indonesia. This is the shared demo profile — edit every field, or sign in with a PayPal sandbox account to make the profile your own.",
   tags: ["Photo editing", "Social media design", "Logos", "Etsy & Shopify"],
 };

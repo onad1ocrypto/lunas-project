@@ -8,7 +8,7 @@ Live: **https://lunas-project.vercel.app**
 
 ### The story it tells
 
-SASAM, a product-photo editor in Wonogiri, Indonesia, gets a brief from James in Austin: _20 photos, white background, 2000px, JPG, $150._
+SASAM, a product-photo editor in Indonesia, gets a brief from James in Austin: _20 photos, white background, 2000px, JPG, $150._
 Lunas drafts the contract → James funds the escrow with PayPal → SASAM delivers → the Verification Agent checks the criteria → one file fails → revision → re-upload passes → review window → payout via PayPal → **LUNAS!**
 
 ---
@@ -19,7 +19,7 @@ Lunas keeps no passwords of its own. `/signin` offers two ways in:
 
 | Mode | For | What happens |
 |---|---|---|
-| **Guest** | anyone evaluating the project | The shared demo profile — **SASAM**, Wonogiri, Indonesia — loads from the browser. Every flow works: send an order, escrow, delivery, verification, release. Edits stay in that browser. |
+| **Guest** | anyone evaluating the project | The shared demo profile — **SASAM**, Indonesia — loads from the browser. Every flow works: send an order, escrow, delivery, verification, release. Edits stay in that browser. |
 | **Log in with PayPal** | a visitor with a PayPal *sandbox* account | Log in with PayPal (PayPal Identity API / OpenID Connect). Lunas receives only the standard claims — name, email, PayPal account ID — and keeps them in a signed HttpOnly cookie. No password ever reaches the app, and no PayPal credential is stored anywhere. |
 
 Connected that way, the profile becomes the user's own: name, handle, city, bio and skills are editable, and the PayPal account ID doubles as the payout receiver for that profile.
