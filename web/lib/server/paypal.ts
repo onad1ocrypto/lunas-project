@@ -191,6 +191,9 @@ export async function createPayPalOrder(input: {
         amount: { currency_code: input.currency, value },
       },
     ],
+    // NOTE: only `payment_source.paypal.experience_context` may be sent. Supplying the
+    // legacy `application_context` alongside it makes PayPal reject the whole order with
+    // INCOMPATIBLE_PARAMETER_VALUE (brand_name / shipping_preference / user_action).
     payment_source: {
       paypal: {
         experience_context: {
@@ -202,7 +205,6 @@ export async function createPayPalOrder(input: {
         },
       },
     },
-    application_context: { brand_name: input.brandName ?? "Lunas", shipping_preference: "NO_SHIPPING", user_action: "PAY_NOW" },
   });
 }
 
