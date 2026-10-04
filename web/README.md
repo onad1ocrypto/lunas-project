@@ -76,6 +76,8 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 - `lib/profile.ts` — pure profile model + `sanitizeProfile()`/`normalizeUrl()` shared by browser and server
 - `lib/store.ts` — server-only Supabase access for published profiles
 - `lib/insights.ts` — the three tables behind the Insights dashboard (orders, money events, agent runs)
+- `lib/verify.ts` — the rule engine: criteria strings into measured verdicts, and the ones it will not pretend to measure
+- `components/DeliveryPanel.tsx` — real file upload; measures pixels in the browser, draws the sample delivery
 - `components/AgStudioView.tsx` — the AG Studio instance, its Lunas theme and the starter report
 - `lib/data.ts` — mock ledger + local brief parser (the fallback the Contract Agent uses)
 - `lib/agent.ts` — Contract / Verification / Mediator agents (LLM + local fallback)
