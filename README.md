@@ -48,6 +48,7 @@ Connected that way, the profile becomes the user's own: name, handle, city, bio 
 | `web/` | The Next.js 16 app (UI + API routes) — see [web/README.md](web/README.md) |
 | `brand/` | Hi-res brand originals (gold lockup on navy, transparent lockup/emblem, emblem crop) |
 | `design-prototype.html` | Early self-contained interactive prototype of the 5-step flow |
+| `supabase/` | One SQL file that creates the public-profile table (`setup.sql`) |
 | `tools/` | Local Playwright screenshot helpers (dev only, not deployed) |
 
 ## Run it
@@ -73,7 +74,14 @@ LLM_API_KEY                               # Contract / Verification / Mediator a
 LLM_BASE_URL / LLM_MODEL                  # any OpenAI-compatible gateway
 AUTH_SECRET                               # signs the session cookie (falls back to PAYPAL_CLIENT_SECRET)
 APP_ORIGIN                                # optional: public origin used for the OAuth return URL
+SUPABASE_URL / SUPABASE_SERVICE_KEY       # publishes profiles so clients see them (optional)
 ```
+
+**Optional — publish profiles (Supabase).** Without it everything still runs; a signed-in
+user's photo, links and portfolio stay on their own device. To let *clients on other devices*
+see them, create a free Supabase project, paste **`supabase/setup.sql`** into the SQL Editor
+and set `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` (Project Settings → API → secret key).
+The table has row level security on with no policies, so only the server can read or write it.
 
 ## Deploy
 
@@ -119,6 +127,7 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 
 - [x] Trilingual UI (EN / 中文 / ID), three themes, order flows, public client page
 - [x] Two ways in: guest mode (SASAM) and **Log in with PayPal** (Identity API) sessions, per-account profiles
+- [x] Publish a profile to Supabase so clients see the real photo and portfolio on `/to/<handle>`
 - [x] Profile: photo upload (resized in the browser), social links (X, LinkedIn, Instagram, website) and a portfolio list that clients see on the public page
 - [x] PayPal REST integration: Orders v2 create + capture, Payouts v1 release, Payments v1 refund, webhook signature verification
 - [x] Contract / Verification / Mediator agents with LLM + local fallback

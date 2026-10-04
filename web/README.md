@@ -25,6 +25,7 @@ Works with **no credentials**: PayPal routes answer `503 { enabled: false }` and
 | `/orders/[id]` | Order detail with live flow: accept → pay → deliver → AI check → review → LUNAS stamp |
 | `/to/[handle]` | Public order page clients use to send a request (e.g. `/to/sasam`) |
 | `/signin` | Two ways in: **guest mode** (shared SASAM demo profile) or **Log in with PayPal** (sandbox) |
+| `/to/[handle]` (published) | If that handle was published, the page is served from Supabase — the visitor sees the real profile |
 | `/profile` | Your identity: photo upload, social links, portfolio list (all editable, per identity) |
 
 ## API
@@ -43,6 +44,9 @@ Works with **no credentials**: PayPal routes answer `503 { enabled: false }` and
 | `GET /api/auth/paypal/callback` | Exchanges the code, reads Identity API userinfo, sets the signed session cookie |
 | `GET /api/auth/session` | Who is this visitor: `{ mode: "guest" \| "paypal", paypal?, paypalLoginAvailable }` |
 | `POST /api/auth/signout` | Clears the session cookie — back to guest mode |
+| `GET /api/profile` | Is my profile published, and under which handle? |
+| `PUT /api/profile` | Publishes the signed-in profile (sanitised again server-side) |
+| `GET /api/profiles/[handle]` | Public read of a published profile (safe columns only, no account id) |
 
 ## Environment
 
@@ -56,6 +60,7 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 | `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | Client id for any browser-side PayPal usage. |
 | `LLM_API_KEY` | Contract / Verification / Mediator agents. Without it they use the local deterministic engine. |
 | `LLM_BASE_URL`, `LLM_MODEL` | Any OpenAI-compatible gateway (default `https://api.openai.com/v1/chat/completions`, `gpt-4o-mini`). |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Publishes profiles so clients on other devices see the real photo/links/portfolio. Create the table with `../supabase/setup.sql`. The **secret** key is server-only — no `NEXT_PUBLIC_` prefix. |
 | `AUTH_SECRET` | HMAC key that signs the session cookie. Falls back to `PAYPAL_CLIENT_SECRET`; set it to keep the two keys separate. |
 | `APP_ORIGIN` | Optional. Public origin used to build the OAuth return URL (e.g. `https://lunas-project.vercel.app`). Must match the **Return URL** registered in the PayPal dashboard. |
 | `BUILD_SHA` | Build stamp shown in the footer (injected by the deploy script). |
@@ -66,6 +71,8 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 - `lib/i18n.tsx` — language provider, `t()`, money/date formatting per locale
 - `lib/me.tsx` — identity + profile: guest persona (SASAM) or the PayPal account in session; profiles stored per identity, including photo (data URL), social links and portfolio items. `normalizeUrl()` keeps only http(s) links out of user input
 - `lib/session.ts` — server-only: HMAC-signed session cookie, OAuth state, Identity API calls
+- `lib/profile.ts` — pure profile model + `sanitizeProfile()`/`normalizeUrl()` shared by browser and server
+- `lib/store.ts` — server-only Supabase access for published profiles
 - `lib/data.ts` — mock ledger + local brief parser (the fallback the Contract Agent uses)
 - `lib/agent.ts` — Contract / Verification / Mediator agents (LLM + local fallback)
 - `lib/paypal.ts` — PayPal REST client: Orders v2, Payouts v1, Refunds, webhook verification

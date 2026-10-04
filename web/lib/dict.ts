@@ -429,6 +429,16 @@ const en: Record<string, string> = {
   "me.links.empty": "No portfolio links yet — add a few so clients can see your work.",
   "pub.portfolio": "Portfolio",
 
+  /* ---------- publishing the profile ---------- */
+  "me.saved.publishing": "Saving…",
+  "me.saved.published": "Saved & published — clients can see your page now.",
+  "me.saved.localOnly": "Saved on this device. Server storage is not configured yet.",
+  "me.saved.handleTaken": "That handle is already taken — pick another one.",
+  "me.saved.failed": "Saved here, but publishing failed. Try again.",
+  "me.publish.on": "Published — clients see this at /to/{handle}",
+  "me.publish.off": "Not published yet — press Save to publish it",
+  "me.publish.guest": "Only on this device — log in with PayPal to publish",
+  "me.saved.tableMissing": "Saved on this device. The Supabase table is missing — run the setup SQL once.",
 };
 
 const zh: Record<string, string> = {
@@ -859,6 +869,16 @@ const zh: Record<string, string> = {
   "me.links.empty": "还没有作品链接 — 添加几个，让客户看到你的作品。",
   "pub.portfolio": "作品集",
 
+  /* ---------- 发布个人资料 ---------- */
+  "me.saved.publishing": "保存中…",
+  "me.saved.published": "已保存并发布 — 客户现在可以看到你的页面。",
+  "me.saved.localOnly": "已保存在本设备。服务器存储尚未配置。",
+  "me.saved.handleTaken": "该用户名已被占用 — 请换一个。",
+  "me.saved.failed": "已保存在本地，但发布失败。请重试。",
+  "me.publish.on": "已发布 — 客户可在 /to/{handle} 查看",
+  "me.publish.off": "尚未发布 — 按“保存”即可发布",
+  "me.publish.guest": "仅保存在本设备 — 使用 PayPal 登录后可发布",
+  "me.saved.tableMissing": "已保存在本设备。缺少 Supabase 数据表 — 请先执行一次建表 SQL。",
 };
 
 const id: Record<string, string> = {
@@ -1289,6 +1309,16 @@ const id: Record<string, string> = {
   "me.links.empty": "Belum ada tautan portofolio — tambahkan supaya klien bisa melihat hasil kerjamu.",
   "pub.portfolio": "Portofolio",
 
+  /* ---------- menerbitkan profil ---------- */
+  "me.saved.publishing": "Menyimpan…",
+  "me.saved.published": "Tersimpan & terbit — klien sudah bisa melihat halamanmu.",
+  "me.saved.localOnly": "Tersimpan di perangkat ini. Penyimpanan server belum dikonfigurasi.",
+  "me.saved.handleTaken": "Username itu sudah dipakai — pilih yang lain.",
+  "me.saved.failed": "Tersimpan di sini, tapi gagal diterbitkan. Coba lagi.",
+  "me.publish.on": "Terbit — klien melihatnya di /to/{handle}",
+  "me.publish.off": "Belum terbit — tekan Simpan untuk menerbitkan",
+  "me.publish.guest": "Hanya di perangkat ini — masuk dengan PayPal untuk menerbitkan",
+  "me.saved.tableMissing": "Tersimpan di perangkat ini. Tabel Supabase belum ada — jalankan SQL setup sekali saja.",
 };
 
 export const dict: Record<Lang, Record<string, string>> = { en, zh, id };

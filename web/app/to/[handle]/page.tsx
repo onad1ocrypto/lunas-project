@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { type Criterion } from "@/lib/data";
-import { hostOf, initialsOf, ME_COLOR, SOCIAL_KEYS, useMe } from "@/lib/me";
+import { hostOf, initialsOf, ME_COLOR, SOCIAL_KEYS, useMe, type MeProfile } from "@/lib/me";
 import { Capi } from "@/components/Capi";
 import { Icon } from "@/components/Icon";
 import { BriefDrafter } from "@/components/DraftContract";
@@ -14,6 +15,26 @@ import { Avatar, Confetti, Country, LangSwitch, Logo, Product, ThemeSwitch } fro
 export default function PublicOrderPage() {
   const { t, money } = useI18n();
   const { me } = useMe();
+  const params = useParams<{ handle: string }>();
+  const handle = (params?.handle ?? "").toString();
+  /* A profile published to the server wins: that is the real one, the one clients see
+     on their own devices. Falls back to the local persona (the shared demo). */
+  const [published, setPublished] = useState<MeProfile | null>(null);
+  useEffect(() => {
+    if (!handle) return;
+    let alive = true;
+    fetch(`/api/profiles/${encodeURIComponent(handle)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive && d?.profile) setPublished(d.profile as MeProfile);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [handle]);
+  const shown = published ?? me;
+  const firstName = shown.name.split(" ")[0];
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [brief, setBrief] = useState("");
@@ -24,7 +45,7 @@ export default function PublicOrderPage() {
 
   const ready = name.trim().length > 1 && /\S+@\S+/.test(email) && criteria.length > 0 && Number(budget) > 0;
   const TAG_COLORS = ["var(--pink-l)", "var(--sky-l)", "var(--lemon-l)", "var(--mint-l)"];
-  const tagList = me.tags.length ? me.tags : [t("pub.skill1"), t("pub.skill2"), t("pub.skill3"), t("pub.skill4")];
+  const tagList = shown.tags.length ? shown.tags : [t("pub.skill1"), t("pub.skill2"), t("pub.skill3"), t("pub.skill4")];
   const skills = tagList.slice(0, 6).map((s, i) => ({ s, c: TAG_COLORS[i % TAG_COLORS.length] }));
 
   return (
@@ -49,21 +70,21 @@ export default function PublicOrderPage() {
             ))}
           </div>
           <div style={{ padding: "0 22px 22px" }}>
-            <div style={{ marginTop: -36, position: "relative", zIndex: 2 }}><Avatar p={{ initials: initialsOf(me.name), color: ME_COLOR }} size={78} photo={me.photo} /></div>
-            <h1 style={{ fontSize: 28, marginTop: 10 }}>{me.name}</h1>
+            <div style={{ marginTop: -36, position: "relative", zIndex: 2 }}><Avatar p={{ initials: initialsOf(shown.name), color: ME_COLOR }} size={78} photo={shown.photo} /></div>
+            <h1 style={{ fontSize: 28, marginTop: 10 }}>{shown.name}</h1>
             <div className="row tiny muted" style={{ gap: 6, marginTop: 4, fontWeight: 700 }}>
-              <Icon name="globe" size={14} /> {me.city ? `${me.city} ` : ""}{me.country ? <Country code={me.country} /> : null} · EN / ID / 中文
+              <Icon name="globe" size={14} /> {shown.city ? `${shown.city} ` : ""}{shown.country ? <Country code={shown.country} /> : null} · EN / ID / 中文
             </div>
-            <p style={{ marginTop: 12, lineHeight: 1.55 }}>{me.bio}</p>
+            <p style={{ marginTop: 12, lineHeight: 1.55 }}>{shown.bio}</p>
             <div className="row wrap" style={{ gap: 8, marginTop: 14 }}>
               {skills.map((x) => <span key={x.s} className="chip" style={{ background: x.c }}>{x.s}</span>)}
             </div>
 
             {/* social links the freelancer added */}
-            {(me.socials ? SOCIAL_KEYS.filter((k) => me.socials![k]) : []).length > 0 && (
+            {(shown.socials ? SOCIAL_KEYS.filter((k) => shown.socials![k]) : []).length > 0 && (
               <div className="row wrap" style={{ gap: 8, marginTop: 12 }}>
-                {SOCIAL_KEYS.filter((k) => me.socials && me.socials[k]).map((k) => (
-                  <a key={k} className="chip" href={me.socials![k]} target="_blank" rel="noreferrer noopener" style={{ gap: 6, fontWeight: 800, textDecoration: "none" }}>
+                {SOCIAL_KEYS.filter((k) => shown.socials && shown.socials[k]).map((k) => (
+                  <a key={k} className="chip" href={shown.socials![k]} target="_blank" rel="noreferrer noopener" style={{ gap: 6, fontWeight: 800, textDecoration: "none" }}>
                     <Icon name="link" size={13} /> {t(`me.f.${k}`)}
                   </a>
                 ))}
@@ -71,11 +92,11 @@ export default function PublicOrderPage() {
             )}
 
             {/* portfolio: what the client is here to see */}
-            {(me.portfolio?.length ?? 0) > 0 && (
+            {(shown.portfolio?.length ?? 0) > 0 && (
               <div style={{ marginTop: 18 }}>
                 <span className="sticker" style={{ background: "var(--mint)", fontSize: 13, transform: "rotate(-2deg)" }}>{t("pub.portfolio")}</span>
                 <div className="col" style={{ gap: 8, marginTop: 12 }}>
-                  {me.portfolio!.map((it, i) => (
+                  {shown.portfolio!.map((it, i) => (
                     <a
                       key={i}
                       href={it.url}
@@ -113,7 +134,7 @@ export default function PublicOrderPage() {
               <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
                 <div className="grow">
                   <span className="sticker" style={{ background: "var(--lemon)", transform: "rotate(-2deg)", fontSize: 14 }}>{t("pub.kicker")}</span>
-                  <h2 style={{ fontSize: 32, marginTop: 12 }}>{t("pub.title", { name: me.name.split(" ")[0] })}</h2>
+                  <h2 style={{ fontSize: 32, marginTop: 12 }}>{t("pub.title", { name: firstName })}</h2>
                   <p className="muted" style={{ marginTop: 6 }}>{t("pub.sub")}</p>
                 </div>
                 <Capi size={80} mood="wink" />
@@ -131,7 +152,7 @@ export default function PublicOrderPage() {
               </div>
 
               <div style={{ marginTop: 16 }}>
-                <BriefDrafter brief={brief} setBrief={setBrief} example={t("ex.fromClient", { name: me.name.split(" ")[0] })} placeholder={t("pub.briefPh")}
+                <BriefDrafter brief={brief} setBrief={setBrief} example={t("ex.fromClient", { name: firstName })} placeholder={t("pub.briefPh")}
                   onDrafted={(r) => { setCriteria(r.criteria); if (r.amount) setBudget(r.amount); if (!name) { setName("James Miller"); setEmail("james@shop.com"); } }} />
               </div>
 
@@ -144,15 +165,15 @@ export default function PublicOrderPage() {
                   <Icon name="send" size={18} /> {t("pub.send")}
                 </button>
               </div>
-              <p className="tiny muted" style={{ marginTop: 10 }}>{t("pub.noPayYet", { name: me.name.split(" ")[0] })}</p>
+              <p className="tiny muted" style={{ marginTop: 10 }}>{t("pub.noPayYet", { name: firstName })}</p>
             </>
           ) : (
             <div className="col pop-in" style={{ alignItems: "center", textAlign: "center", gap: 12, padding: "30px 10px" }}>
               <Capi size={130} mood="love" motion="jump" />
               <h2 style={{ fontSize: 32 }}>{t("pub.sentT")}</h2>
-              <p className="muted" style={{ maxWidth: 440 }}>{t("pub.sentB", { name: me.name.split(" ")[0], email })}</p>
+              <p className="muted" style={{ maxWidth: 440 }}>{t("pub.sentB", { name: firstName, email })}</p>
               <div className="pub-steps">
-                {[t("pub.next1", { name: me.name.split(" ")[0] }), t("pub.next2", { amount: money(Number(budget) || 0) }), t("pub.next3")].map((s, i) => (
+                {[t("pub.next1", { name: firstName }), t("pub.next2", { amount: money(Number(budget) || 0) }), t("pub.next3")].map((s, i) => (
                   <div key={i} className="row" style={{ gap: 10, textAlign: "left" }}>
                     <span className="pub-n" style={{ background: ["var(--lemon)", "var(--sky)", "var(--mint)"][i] }}>{i + 1}</span>
                     <span style={{ fontWeight: 700 }}>{s}</span>
@@ -160,7 +181,7 @@ export default function PublicOrderPage() {
                 ))}
               </div>
               <div className="row wrap" style={{ gap: 10, justifyContent: "center", marginTop: 8 }}>
-                <Link href="/orders?tab=from_client" className="btn ink">{t("pub.seeAsSari", { name: me.name.split(" ")[0] })} <Icon name="right" size={16} /></Link>
+                <Link href="/orders?tab=from_client" className="btn ink">{t("pub.seeAsSari", { name: firstName })} <Icon name="right" size={16} /></Link>
                 <button className="btn" onClick={() => { setSent(false); setBrief(""); setCriteria([]); }}>{t("pub.another")}</button>
               </div>
             </div>

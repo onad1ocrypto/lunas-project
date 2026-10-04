@@ -61,6 +61,7 @@ export default function ProfilePage() {
   const [toast, setToast] = useState("");
   const [welcomed, setWelcomed] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [publication, setPublication] = useState<{ published: boolean; handle?: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const ping = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2600); };
   const asPaypal = session.mode === "paypal";
@@ -101,6 +102,20 @@ export default function ProfilePage() {
 
   const doSignOut = () => { signOut(); router.push("/"); };
 
+  /* Signed in? Ask whether this account already has a published page. */
+  useEffect(() => {
+    if (!sessionReady || !asPaypal) {
+      setPublication(null);
+      return;
+    }
+    let alive = true;
+    fetch("/api/profile", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d) setPublication({ published: !!d.published, handle: d.handle }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [sessionReady, asPaypal]);
+
   const paid = ORDERS.filter((o) => o.status === "paid");
   const earned = paid.reduce((s, o) => s + o.amount, 0) + 3180; // mock lifetime total
   const stats = [
@@ -110,7 +125,7 @@ export default function ProfilePage() {
   ];
 
   const TAG_COLORS = ["var(--pink-l)", "var(--sky-l)", "var(--lemon-l)", "var(--mint-l)"];
-  const save = () => {
+  const save = async () => {
     /* Normalise here, not only when reading storage: an unnormalised value would hit
        the DOM as a raw href first (a javascript: URL in an href is an XSS vector). */
     const cleanedSocials = SOCIAL_KEYS.reduce<NonNullable<MeProfile["socials"]>>((acc, k) => {
@@ -137,7 +152,37 @@ export default function ProfilePage() {
     setMe(clean);
     setDraft(clean);
     setEditing(false);
-    ping(t("me.saved"));
+
+    /* Guests stay local (nothing to write to). A signed-in user publishes, so the page
+       becomes visible to clients on other devices. */
+    if (!asPaypal) {
+      ping(t("me.saved"));
+      return;
+    }
+    ping(t("me.saved.publishing"));
+    try {
+      const r = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(clean),
+      });
+      const d = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; handle?: string };
+      if (r.ok && d.ok) {
+        setPublication({ published: true, handle: d.handle ?? clean.handle });
+        ping(t("me.saved.published"));
+      } else if (d.error === "handle_taken") {
+        setPublication({ published: false });
+        ping(t("me.saved.handleTaken"));
+      } else if (d.error === "store_not_ready") {
+        ping(t("me.saved.localOnly"));
+      } else if (d.error === "table_missing") {
+        ping(t("me.saved.tableMissing"));
+      } else {
+        ping(t("me.saved.failed"));
+      }
+    } catch {
+      ping(t("me.saved.failed"));
+    }
   };
 
   return (
@@ -341,6 +386,23 @@ export default function ProfilePage() {
           </div>
           <Link className="btn sm" href={`/to/${me.handle}`}><Icon name="eye" size={15} /> {t("me.menu.public")}</Link>
         </div>
+
+        {/* is this page visible to other people? */}
+        {asPaypal ? (
+          publication?.published ? (
+            <span className="badge" style={{ background: "var(--mint-l)", color: "var(--green)", borderColor: "currentColor", alignSelf: "flex-start" }}>
+              <span className="dot" /> <span style={{ color: "var(--ink)" }}>{t("me.publish.on", { handle: publication.handle ?? me.handle })}</span>
+            </span>
+          ) : (
+            <span className="badge" style={{ background: "var(--lemon-l)", borderColor: "currentColor", alignSelf: "flex-start" }}>
+              <span className="dot" /> <span style={{ color: "var(--ink)" }}>{t("me.publish.off")}</span>
+            </span>
+          )
+        ) : (
+          <span className="badge" style={{ background: "var(--cream)", borderColor: "currentColor", alignSelf: "flex-start" }}>
+            <span className="dot" /> <span style={{ color: "var(--ink)" }}>{t("me.publish.guest")}</span>
+          </span>
+        )}
 
         {socialsOf(me).length > 0 && (
           <div className="row wrap" style={{ gap: 8 }}>
