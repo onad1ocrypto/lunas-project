@@ -47,7 +47,34 @@ async function llmJSON(system: string, user: string): Promise<Record<string, unk
 const CONTRACT_SYSTEM = `You are the Contract Agent of Lunas, an escrow platform for freelancers.
 Turn a raw job brief into a tiny clear contract. Reply with ONLY JSON:
 {"title": string, "amount": number|null, "criteria": [{"label": string, "rule": string, "icon": "file"|"image"|"ruler"|"palette"|"clock"|"text"}]}
-Rules for "rule": machine-checkable pseudo-code, e.g. count(files) == 20, mime == image/jpeg, max(w,h) >= 2000, vision: bg >= 97% #FFF, due <= Friday.
+
+"rule" MUST be ONE of these machine-checkable forms, exactly as written — one check
+per rule, never two joined with "&&" or "||" (the engine refuses to score half a rule):
+  count(files|images|videos|audio|docs|slides|concepts) == N
+  mime == image/jpeg                    — a full media type
+  mime \u2208 {mp4, webm}                 — one of these formats (use this when the client names a format)
+  formats \u2287 {svg, png}                — all of these must appear
+  max(w,h) \u2265 2000                     — pixels, counting video frames too
+  w == 1080 && h == 1920                — exact pixel size
+  aspect == 9:16
+  duration \u2264 60 | duration == 15 | 30 \u2264 duration \u2264 90   — seconds of video/audio
+  audio \u2265 -30 dBFS | audio present     — level of the audio track, or that one exists
+  size \u2264 200 MB                        — per file
+  lang \u2287 {es, en}
+  300 \u2264 words \u2264 500
+  contains('handmade','Osaka')
+  submitted_at \u2264 due
+  dpi \u2265 300 | pages == 4 | size == A4  — print facts a browser cannot read (flagged for a human)
+  vision: bg \u2265 97% #FFF | vision: avg saturation < 45%   — measured from real pixels
+  vision: <what a person must look at>  — e.g. "vision: logo visible in the first 3 seconds"
+
+If the brief asks for something none of those can check (style, tone, whether a cut
+"feels" right, what is inside the audio), write it as a single "vision: ..." criterion
+so it is handed to a human — that is honest, whereas a rule nobody can check is not.
+NEVER shrink a requirement to a weaker rule that happens to be checkable: "upbeat
+soundtrack" is not "audio present", "premium look" is not "size \u2264 50 MB", "shot on
+film" is not "w == 1080". Put the part nobody can measure in a "vision:" criterion and
+keep the measurable part as its own rule.
 3-5 criteria max. Write "label" in the language requested by the user.`;
 
 export async function draftContract(brief: string, lang: Lang): Promise<DraftResult> {

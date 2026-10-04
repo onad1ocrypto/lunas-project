@@ -96,12 +96,59 @@ function collectionOf(kind: string, files: FileFacts[]): FileFacts[] {
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/**
+ * Did a checker consume the *whole* rule, or only a piece of it?
+ *
+ * A model writing a free-form rule happily welds several checks together
+ * ("ext == .mp4 && ratio == 9:16 && duration == 45s"). Judging one clause of
+ * that and reporting a verdict would be the worst kind of wrong answer, so a
+ * checker that did not use every comparison in the rule returns nothing and the
+ * criterion falls through to `manual` instead.
+ */
+function unjudged(rule: string, consumed: RegExp): boolean {
+  const rest = rule.replace(consumed, " ").replace(/\b(and|&&|\|\|)\b/gi, " ");
+  return /(==|\u2264|\u2265|<=|>=|<|>)/.test(rest);
+}
+const CONNECTORS = /\b(and|&&|\|\|)\b/gi;
+
+/**
+ * "mime == video/mp4 && aspect == 9:16 && duration == 45" — a model asked for one
+ * contract often writes one rule holding several checks.
+ *
+ * Refusing it outright would throw away a perfectly checkable contract, and
+ * judging one clause of it would be a lie. So the rule is split and **every**
+ * clause is evaluated: the verdict is the combination, and if even one clause is
+ * something the engine cannot check, the whole rule is left to a human.
+ */
+function evaluateCompound(rule: string, files: FileFacts[], ctx: VerifyContext): RuleResult | null {
+  const link = rule.match(/&&|\|\|/);
+  if (!link) return null;
+  const parts = rule
+    .split(/\s*(?:&&|\|\|)\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+
+  const results = parts.map((p) => evaluateRule(p, files, ctx));
+  const unverifiable = results.some((r) => r.kind === "manual" && /could not check this automatically|could not be checked/.test(r.note));
+  if (unverifiable) return null; // let the caller fall through to a plain manual verdict
+
+  const pass = link[0] === "&&" ? results.every((r) => r.pass) : results.some((r) => r.pass);
+  const kind: VerdictKind = results.every((r) => r.kind === "measured")
+    ? "measured"
+    : results.some((r) => r.kind === "llm")
+      ? "llm"
+      : "manual";
+  return { pass, note: results.map((r) => r.note).join(" \u00b7 "), kind };
+}
 const firstBad = (rows: { name: string; bad: boolean }[]) => rows.find((r) => r.bad)?.name;
 
 /** "count(files) == 20" */
 function checkCount(rule: string, files: FileFacts[]): RuleResult | null {
   const m = rule.match(/count\(\s*([a-z_]+)\s*\)\s*(==|>=|<=|>|<)\s*(\d+)/i);
   if (!m) return null;
+  if (unjudged(rule, /count\(\s*[a-z_]+\s*\)\s*(?:==|>=|<=|>|<)\s*\d+/gi)) return null;
   const [, kind, op, raw] = m;
   const n = collectionOf(kind, files).length;
   const want = Number(raw);
@@ -208,6 +255,7 @@ function checkLang(rule: string, files: FileFacts[]): RuleResult | null {
 function checkMime(rule: string, files: FileFacts[]): RuleResult | null {
   const m = rule.match(/mime\s*==\s*([a-z]+\/[a-z0-9.+-]+)/i);
   if (!m) return null;
+  if (unjudged(rule, /mime\s*==\s*[a-z]+\/[a-z0-9.+-]+/gi)) return null;
   const want = m[1].toLowerCase();
   const bad = files.filter((f) => f.mime.toLowerCase() !== want);
   return {
@@ -221,6 +269,7 @@ function checkMime(rule: string, files: FileFacts[]): RuleResult | null {
 function checkAlpha(rule: string, files: FileFacts[]): RuleResult | null {
   if (!/alpha/i.test(rule)) return null;
   if (!/png/i.test(rule)) return null;
+  if (unjudged(rule, /(?:png|alpha)/gi)) return null;
   const pngs = files.filter((f) => f.mime === "image/png" || ext(f.name) === "png");
   if (!pngs.length) return { pass: false, note: "no PNG in the delivery", kind: "measured" };
   const withAlpha = pngs.filter((f) => f.alpha);
@@ -234,6 +283,13 @@ function checkAlpha(rule: string, files: FileFacts[]): RuleResult | null {
 /** "max(w,h) \u2265 2000", "w == 1080 && h == 1350", "w == h == 500" */
 function checkDimensions(rule: string, files: FileFacts[]): RuleResult | null {
   if (!/(max\s*\(\s*w\s*,\s*h\s*\)|w\s*==|h\s*==)/i.test(rule)) return null;
+  if (
+    unjudged(
+      rule,
+      /(w\s*==\s*h\s*==\s*\d+|max\s*\(\s*w\s*,\s*h\s*\)\s*(?:\u2265|>=)\s*\d+|w\s*==\s*\d+|h\s*==\s*\d+)/gi
+    )
+  )
+    return null;
   // Pictures and video frames both carry pixel dimensions: a 1080×1920 reel
   // satisfies "w == 1080 && h == 1920" exactly like a still would.
   const images = files.filter((f) => isVisual(f) && f.width && f.height);
@@ -306,6 +362,8 @@ function checkDuration(rule: string, files: FileFacts[]): RuleResult | null {
 
   const op = rule.match(/duration\s*(==|\u2264|<=|<|\u2265|>=|>)\s*(\d+(?:\.\d+)?)/i);
   if (op) {
+    if (unjudged(rule, /duration\s*(?:==|\u2264|<=|<|\u2265|>=|>)\s*\d+(?:\.\d+)?\s*(?:s|sec|secs|seconds?|detik|\u79d2)?/gi))
+      return null;
     const want = Number(op[2]);
     const fails = known.filter((f) => {
       const d = f.durationSec!;
@@ -351,7 +409,18 @@ function checkAudio(rule: string, files: FileFacts[]): RuleResult | null {
   const min = rule.match(/(?:audio|loudness)\s*(?:\u2265|>=|>)\s*(-?\d+(?:\.\d+)?)\s*(?:db|dbfs)?/i);
 
   if (!min) {
-    // "audio present": every timed file must carry a track that is not silent
+    /* "audio present" only. A rule like "audio: music_track == true" asks for
+       something a level check cannot answer — music is not a thing a decoder
+       reports — so it goes to a human instead of being quietly reduced to
+       "there is some audio". */
+    const presence = /^\s*(?:vision:\s*)?(?:an?\s+)?(?:audible\s+)?audio(?:\s+track)?\s*(?:is\s*)?(?:present|required|included|audible|mixed)?\s*$/i;
+    if (/(==|\u2264|\u2265|<=|>=|<|>)/.test(rule) || !presence.test(rule))
+      return {
+        pass: false,
+        note: "Lunas measures whether the audio track is there and how loud it is, not what is in it — please listen",
+        kind: "manual",
+      };
+    // every timed file must carry a track that is not silent
     const silent = timed.filter((f) => levelOf(f) === null);
     if (silent.length)
       return { pass: false, note: `${silent[0].name} carries no audible track`, kind: "measured" };
@@ -362,6 +431,7 @@ function checkAudio(rule: string, files: FileFacts[]): RuleResult | null {
     return { pass: true, note: `${timed.length} file(s) with audio, mean ${mean.toFixed(1)} dBFS`, kind: "measured" };
   }
 
+  if (unjudged(rule, /(?:audio|loudness)\s*(?:\u2265|>=|>)\s*-?\d+(?:\.\d+)?\s*(?:db|dbfs)?/gi)) return null;
   const floor = Number(min[1]);
   const silent = timed.filter((f) => levelOf(f) === null);
   const measured = timed.filter((f) => typeof levelOf(f) === "number");
@@ -386,6 +456,7 @@ function checkAspect(rule: string, files: FileFacts[]): RuleResult | null {
   if (!/aspect/i.test(rule)) return null;
   const m = rule.match(/aspect\s*(?:==|\u2248)\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/i);
   if (!m) return null;
+  if (unjudged(rule, /aspect\s*(?:==|\u2248)\s*\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?/gi)) return null;
   const want = Number(m[1]) / Number(m[2]);
   const visual = files.filter((f) => isVisual(f) && f.width && f.height);
   if (!visual.length) return { pass: false, note: "no image or video to take a ratio from", kind: "measured" };
@@ -405,6 +476,7 @@ function checkAspect(rule: string, files: FileFacts[]): RuleResult | null {
 function checkFileSize(rule: string, files: FileFacts[]): RuleResult | null {
   const m = rule.match(/size\s*(?:\u2264|<=|<)\s*(\d+(?:\.\d+)?)\s*(mb|gb)/i);
   if (!m) return null;
+  if (unjudged(rule, /size\s*(?:\u2264|<=|<)\s*\d+(?:\.\d+)?\s*(?:mb|gb)/gi)) return null;
   const cap = Number(m[1]) * (m[2].toLowerCase() === "gb" ? 1024 : 1);
   const mb = (f: FileFacts) => f.sizeBytes / (1024 * 1024);
   const biggest = files.reduce((a, b) => (mb(a) >= mb(b) ? a : b));
@@ -422,6 +494,7 @@ function checkVision(rule: string, files: FileFacts[]): RuleResult | null {
 
   const bg = rule.match(/bg\s*(?:\u2265|>=)\s*(\d+)\s*%/i);
   if (bg) {
+    if (unjudged(rule, /bg\s*(?:\u2265|>=)\s*\d+\s*%/gi)) return null;
     const want = Number(bg[1]) / 100;
     const images = files.filter((f) => isImage(f) && typeof f.bgWhite === "number");
     if (!images.length && files.some(isVideo))
@@ -444,6 +517,7 @@ function checkVision(rule: string, files: FileFacts[]): RuleResult | null {
 
   const sat = rule.match(/saturation\s*(?:\u2264|<=|<)\s*(\d+)\s*%/i);
   if (sat) {
+    if (unjudged(rule, /(?:avg\s*)?(?:saturation|sat)\s*(?:\u2264|<=|<)\s*\d+\s*%/gi)) return null;
     const want = Number(sat[1]) / 100;
     const images = files.filter((f) => isImage(f) && typeof f.avgSaturation === "number");
     if (!images.length && files.some(isVideo))
@@ -459,13 +533,14 @@ function checkVision(rule: string, files: FileFacts[]): RuleResult | null {
   }
 
   // Judgement calls a rule engine cannot settle: text taste, colour harmony.
-  return { pass: false, note: "needs a visual review (LLM key not configured)", kind: "manual" };
+  return { pass: false, note: "needs a visual review — please look at this one yourself", kind: "manual" };
 }
 
 /** "300 \u2264 words \u2264 500", "contains('handmade','Osaka')" */
 function checkText(rule: string, files: FileFacts[]): RuleResult | null {
   const words = rule.match(/(\d+)\s*(?:\u2264|<=|<)\s*words\s*(?:\u2264|<=|<)\s*(\d+)/i);
   if (words) {
+    if (unjudged(rule, /\d+\s*(?:\u2264|<=|<)\s*words\s*(?:\u2264|<=|<)\s*\d+/gi)) return null;
     const [, lo, hi] = words.map(Number);
     const texts = files.filter(isText);
     if (!texts.length) return { pass: false, note: "no text file to count words in", kind: "measured" };
@@ -530,6 +605,8 @@ export function evaluateRule(rule: string, files: FileFacts[], ctx: VerifyContex
     const r = table(rule, files);
     if (r) return r;
   }
+  const compound = evaluateCompound(rule, files, ctx);
+  if (compound) return compound;
   const dl = checkDeadline(rule, ctx);
   if (dl) return dl;
   const un = checkUnmeasurable(rule);

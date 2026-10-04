@@ -115,3 +115,23 @@ const written = D.draftCriteria("4 articles, 800-1200 words each, docx, by 20 No
 const wrules = written.criteria.map((c) => c.rule);
 ok("parser: 4 articles counted as documents", wrules.includes("count(docs) == 4"), wrules.join(" | "));
 ok("parser: word range", wrules.includes("800 \u2264 words \u2264 1200"), wrules.join(" | "));
+
+/* ---- a model writing free-form rules must never get a fragment verdict ---- */
+r = rule("ext == .mp4 && ratio == 9:16 && duration == 45s", [reel()]);
+ok("compound rule (ext && ratio && duration) is not judged on one clause", r.kind === "manual", `${r.kind}: ${r.note}`);
+r = rule("count(videos) == 1 && duration \u2264 60", [reel()]);
+ok("a conjunction of two known checks is judged on BOTH clauses", r.pass && r.kind === "measured" && r.note.includes("1 videos") && r.note.includes("6.0s"), `${r.kind}: ${r.note}`);
+r = rule("mime == video/mp4 && aspect == 9:16 && duration == 45", [reel()]);
+ok("the model's own compound rule fails on the clause that is wrong (45s vs 6.0s)", !r.pass && r.kind === "measured" && r.note.includes("45s"), `${r.kind}: ${r.note}`);
+r = rule("count(videos) == 1 && duration \u2264 60 && ext == .mp4", [reel()]);
+ok("one unverifiable clause demotes the whole rule to manual", r.kind === "manual", `${r.kind}: ${r.note}`);
+r = rule("w == 1080 && h == 1920", [reel()]);
+ok("the supported w/h compound still measures", r.pass && r.kind === "measured", r.note);
+r = rule("png && alpha", [f({ name: "logo.png", mime: "image/png", alpha: true })]);
+ok("png && alpha still measures", r.pass && r.kind === "measured", r.note);
+r = rule("audio: music_track == true", [reel()]);
+ok("\"music_track == true\" is manual: a level check cannot hear music", r.kind === "manual", r.note);
+r = rule("audio present", [reel()]);
+ok("\"audio present\" is measured from a real track", r.pass && r.kind === "measured", r.note);
+r = rule("audio present", [reel({ hasAudio: false, dbfs: undefined })]);
+ok("\"audio present\" fails on a silent render", !r.pass && r.kind === "measured", r.note);
