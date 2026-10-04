@@ -461,6 +461,17 @@ const en: Record<string, string> = {
   "ins.loading": "Loading the dashboard…",
   "ins.licensed": "AG Studio Pro (hackathon trial, evaluation only)",
 
+  /* ---------- delivery upload (real files) ---------- */
+  "dl.dropSub2": "Drop the actual files here — JPG, PNG, PDF or text. They are measured in your browser: count, size, format, pixels.",
+  "dl.reading": "Measuring your files…",
+  "dl.sample": "Use sample files",
+  "dl.sampleBusy": "Drawing 20 sample photos…",
+  "dl.measured": "{n} of {total} files measured · {mb} MB",
+  "dl.replace": "Replace files",
+  "dl.run2": "Run verification",
+  "dl.verRunning": "Verifying…",
+  "dl.sent": "Sent to the client — review window open",
+
 };
 
 const zh: Record<string, string> = {
@@ -923,6 +934,17 @@ const zh: Record<string, string> = {
   "ins.loading": "正在加载仪表板…",
   "ins.licensed": "AG Studio Pro（黑客松试用，仅限评估）",
 
+  /* ---------- 交付上传（真实文件） ---------- */
+  "dl.dropSub2": "把真实文件拖到这里 — JPG、PNG、PDF 或文本。全部在你的浏览器中测量：数量、大小、格式、像素。",
+  "dl.reading": "正在测量文件…",
+  "dl.sample": "使用示例文件",
+  "dl.sampleBusy": "正在生成 20 张示例照片…",
+  "dl.measured": "已测量 {total} 个文件中的 {n} 个 · {mb} MB",
+  "dl.replace": "更换文件",
+  "dl.run2": "运行验证",
+  "dl.verRunning": "验证中…",
+  "dl.sent": "已发送给客户 — 审核期已开始",
+
 };
 
 const id: Record<string, string> = {
@@ -1384,6 +1406,17 @@ const id: Record<string, string> = {
   "ins.reset": "Atur ulang tata letak",
   "ins.loading": "Memuat dashboard…",
   "ins.licensed": "AG Studio Pro (trial hackathon, hanya untuk evaluasi)",
+
+  /* ---------- unggah kiriman (berkas sungguhan) ---------- */
+  "dl.dropSub2": "Tarik berkas aslinya ke sini — JPG, PNG, PDF, atau teks. Semuanya diukur di browser-mu: jumlah, ukuran, format, piksel.",
+  "dl.reading": "Mengukur berkasmu…",
+  "dl.sample": "Pakai berkas contoh",
+  "dl.sampleBusy": "Menggambar 20 foto contoh…",
+  "dl.measured": "{n} dari {total} berkas terukur · {mb} MB",
+  "dl.replace": "Ganti berkas",
+  "dl.run2": "Jalankan verifikasi",
+  "dl.verRunning": "Memverifikasi…",
+  "dl.sent": "Terkirim ke klien — masa tinjauan berjalan",
 
 };
 
