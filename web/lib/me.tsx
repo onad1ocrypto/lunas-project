@@ -13,74 +13,175 @@ export interface MeProfile {
 
 export const ME_COLOR = "var(--peach-l)";
 
+/** Guest persona — what every visitor gets without signing in. Editable like any profile. */
 export const ME_DEFAULT: MeProfile = {
-  name: "Sari Wulandari",
-  handle: "sari",
-  city: "Yogyakarta",
+  name: "SASAM",
+  handle: "sasam",
+  city: "Wonogiri",
   country: "ID",
-  bio: "Product photo editor & designer from Yogyakarta. I make online shops look delicious. 6 years, 86 happy clients, zero drama.",
+  bio: "Product photo editor & designer in Wonogiri, Indonesia. This is the shared demo profile — edit every field, or sign in with a PayPal sandbox account to make the profile your own.",
   tags: ["Photo editing", "Social media design", "Logos", "Etsy & Shopify"],
 };
 
-const STORAGE_KEY = "lunas.me";
+/** What PayPal tells us after the user consents (Identity API / OpenID Connect). */
+export interface PayPalIdentity {
+  payerId: string; // PayPal account id — also valid as a Payouts receiver
+  email: string;
+  name: string;
+  country?: string;
+}
+
+export interface Session {
+  mode: "guest" | "paypal";
+  paypal?: PayPalIdentity;
+  paypalLoginAvailable?: boolean;
+}
+
+/* One profile per identity: the guest profile and each PayPal account keep their own edits. */
+const LEGACY_KEY = "lunas.me";
+const PROFILES_KEY = "lunas.profiles";
+const keyOf = (id: string) => `${PROFILES_KEY}.${id}`;
+const identityOf = (s: Session) => (s.mode === "paypal" && s.paypal ? `pp.${s.paypal.payerId}` : "guest");
+
+/** A PayPal sign-in fills what PayPal knows; everything else is for the user to complete. */
+export function profileFromPayPal(p: PayPalIdentity): MeProfile {
+  const local = (p.email.split("@")[0] || "").trim();
+  const handle = local.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+  return {
+    name: p.name?.trim() || local || "PayPal user",
+    handle: handle || "me",
+    city: "",
+    country: (p.country || "").slice(0, 2).toUpperCase(),
+    bio: "",
+    tags: [],
+  };
+}
+
+function sanitize(raw: string, fallback: MeProfile): MeProfile | null {
+  try {
+    const p = JSON.parse(raw) as Partial<MeProfile>;
+    if (typeof p !== "object" || p === null) return null;
+    return {
+      name: typeof p.name === "string" && p.name.trim() ? p.name : fallback.name,
+      handle: typeof p.handle === "string" && p.handle.trim() ? p.handle : fallback.handle,
+      city: typeof p.city === "string" ? p.city : fallback.city,
+      country: typeof p.country === "string" && p.country ? p.country : fallback.country,
+      bio: typeof p.bio === "string" ? p.bio : fallback.bio,
+      tags: Array.isArray(p.tags) ? p.tags.filter((x) => typeof x === "string").slice(0, 6) : fallback.tags,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readProfile(session: Session): MeProfile {
+  const fallback = session.mode === "paypal" && session.paypal ? profileFromPayPal(session.paypal) : ME_DEFAULT;
+  if (typeof window === "undefined") return fallback;
+  try {
+    const key = keyOf(identityOf(session));
+    const raw = localStorage.getItem(key);
+    if (raw) return sanitize(raw, fallback) ?? fallback;
+    /* one-time migration from the single-profile layout used before sign-in existed */
+    if (session.mode === "guest") {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy) {
+        const migrated = sanitize(legacy, fallback);
+        localStorage.removeItem(LEGACY_KEY);
+        if (migrated) {
+          localStorage.setItem(key, JSON.stringify(migrated));
+          return migrated;
+        }
+      }
+    }
+  } catch {
+    /* private mode / corrupt storage -> defaults */
+  }
+  return fallback;
+}
 
 interface Ctx {
   me: MeProfile;
   setMe: (p: MeProfile) => void;
+  session: Session;
+  sessionReady: boolean;
+  signInWithPayPal: () => void;
+  signInAsGuest: () => void;
   signOut: () => void;
   justSignedOut: boolean;
   clearJustSignedOut: () => void;
 }
+
 const MeCtx = createContext<Ctx | null>(null);
 
 export function MeProvider({ children }: { children: ReactNode }) {
   const [me, setMeState] = useState<MeProfile>(ME_DEFAULT);
+  const [session, setSession] = useState<Session>({ mode: "guest" });
+  const [sessionReady, setSessionReady] = useState(false);
   const [justSignedOut, setJustSignedOut] = useState(false);
 
+  /* Ask the server who we are: guest, or the PayPal account in the signed cookie. */
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const p = JSON.parse(raw) as Partial<MeProfile>;
-        setMeState({
-          ...ME_DEFAULT,
-          ...p,
-          tags: Array.isArray(p.tags) ? p.tags.filter((x) => typeof x === "string") : ME_DEFAULT.tags,
-        });
+    let alive = true;
+    (async () => {
+      let s: Session = { mode: "guest" };
+      try {
+        const r = await fetch("/api/auth/session", { cache: "no-store" });
+        if (r.ok) s = (await r.json()) as Session;
+      } catch {
+        /* offline / API error -> stay guest */
       }
-    } catch {
-      /* corrupted storage -> defaults */
-    }
+      if (!alive) return;
+      setSession(s);
+      setMeState(readProfile(s));
+      setSessionReady(true);
+    })();
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const setMe = useCallback((p: MeProfile) => {
-    setMeState(p);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
-    } catch {
-      /* storage unavailable (private mode) -> in-memory only */
-    }
+  const setMe = useCallback(
+    (p: MeProfile) => {
+      setMeState(p);
+      try {
+        localStorage.setItem(keyOf(identityOf(session)), JSON.stringify(p));
+      } catch {
+        /* storage unavailable (private mode) -> in-memory only */
+      }
+    },
+    [session]
+  );
+
+  const signInWithPayPal = useCallback(() => {
+    window.location.href = "/api/auth/paypal/start";
   }, []);
 
-  /* Sign out for real: this demo keeps the identity only in localStorage, so signing
-     out means forgetting the saved profile (name/handle/city/bio/tags edits included)
-     and reporting the event so the UI can confirm it. Account-less by design: there is
-     nothing else to revoke. */
+  /* Back to guest mode: forget the server session and this device's demo profile. */
   const signOut = useCallback(() => {
-    setMeState(ME_DEFAULT);
+    void fetch("/api/auth/signout", { method: "POST", cache: "no-store" }).catch(() => {});
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(keyOf("guest"));
+      localStorage.removeItem(LEGACY_KEY);
     } catch {
-      /* storage unavailable -> nothing saved to clear */
+      /* nothing to clear */
     }
+    setSession({ mode: "guest" });
+    setMeState(ME_DEFAULT);
     setJustSignedOut(true);
+  }, []);
+
+  /* "Continue as guest" from the sign-in page: same as sign-out, without the farewell toast. */
+  const signInAsGuest = useCallback(() => {
+    void fetch("/api/auth/signout", { method: "POST", cache: "no-store" }).catch(() => {});
+    setSession({ mode: "guest" });
+    setMeState(readProfile({ mode: "guest" }));
   }, []);
 
   const clearJustSignedOut = useCallback(() => setJustSignedOut(false), []);
 
   const value = useMemo<Ctx>(
-    () => ({ me, setMe, signOut, justSignedOut, clearJustSignedOut }),
-    [me, setMe, signOut, justSignedOut, clearJustSignedOut]
+    () => ({ me, setMe, session, sessionReady, signInWithPayPal, signInAsGuest, signOut, justSignedOut, clearJustSignedOut }),
+    [me, setMe, session, sessionReady, signInWithPayPal, signInAsGuest, signOut, justSignedOut, clearJustSignedOut]
   );
   return <MeCtx.Provider value={value}>{children}</MeCtx.Provider>;
 }
@@ -91,7 +192,7 @@ export function useMe() {
   return ctx;
 }
 
-/** "Sari Wulandari" -> "SW"; single word -> first letter doubled-safe fallback. */
+/** "SASAM" -> "S"; "Sari Wulandari" -> "SW". */
 export function initialsOf(name: string): string {
   const w = name.trim().split(/\s+/).filter(Boolean);
   if (!w.length) return "ME";

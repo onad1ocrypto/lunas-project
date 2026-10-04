@@ -23,7 +23,8 @@ Works with **no credentials**: PayPal routes answer `503 { enabled: false }` and
 | `/orders?tab=to_client` | **Orders to clients** (orders you sent) |
 | `/orders/new` | 4-step wizard to send an order to a client (AI drafts the contract) |
 | `/orders/[id]` | Order detail with live flow: accept → pay → deliver → AI check → review → LUNAS stamp |
-| `/to/[handle]` | Public order page clients use to send a request (e.g. `/to/sari`) |
+| `/to/[handle]` | Public order page clients use to send a request (e.g. `/to/sasam`) |
+| `/signin` | Two ways in: **guest mode** (shared SASAM demo profile) or **Log in with PayPal** (sandbox) |
 
 ## API
 
@@ -37,6 +38,10 @@ Works with **no credentials**: PayPal routes answer `503 { enabled: false }` and
 | `POST /api/paypal/payout` | Payouts v1 — release to the freelancer |
 | `POST /api/paypal/refund` | Payments v1 — refund a capture (dispute outcome) |
 | `POST /api/paypal/webhook` | Signature-verified webhook receiver (GET returns setup info) |
+| `GET /api/auth/paypal/start` | Sends the visitor to PayPal's consent screen (sandbox by default) |
+| `GET /api/auth/paypal/callback` | Exchanges the code, reads Identity API userinfo, sets the signed session cookie |
+| `GET /api/auth/session` | Who is this visitor: `{ mode: "guest" \| "paypal", paypal?, paypalLoginAvailable }` |
+| `POST /api/auth/signout` | Clears the session cookie — back to guest mode |
 
 ## Environment
 
@@ -50,18 +55,23 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 | `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | Client id for any browser-side PayPal usage. |
 | `LLM_API_KEY` | Contract / Verification / Mediator agents. Without it they use the local deterministic engine. |
 | `LLM_BASE_URL`, `LLM_MODEL` | Any OpenAI-compatible gateway (default `https://api.openai.com/v1/chat/completions`, `gpt-4o-mini`). |
+| `AUTH_SECRET` | HMAC key that signs the session cookie. Falls back to `PAYPAL_CLIENT_SECRET`; set it to keep the two keys separate. |
+| `APP_ORIGIN` | Optional. Public origin used to build the OAuth return URL (e.g. `https://lunas-project.vercel.app`). Must match the **Return URL** registered in the PayPal dashboard. |
 | `BUILD_SHA` | Build stamp shown in the footer (injected by the deploy script). |
 
 ## Structure
 
 - `lib/dict.ts` — all UI text in 3 languages
 - `lib/i18n.tsx` — language provider, `t()`, money/date formatting per locale
-- `lib/me.tsx` — the freelancer's profile/preferences (persisted per device)
+- `lib/me.tsx` — identity + profile: guest persona (SASAM) or the PayPal account in session; profiles stored per identity
+- `lib/session.ts` — server-only: HMAC-signed session cookie, OAuth state, Identity API calls
 - `lib/data.ts` — mock ledger + local brief parser (the fallback the Contract Agent uses)
 - `lib/agent.ts` — Contract / Verification / Mediator agents (LLM + local fallback)
 - `lib/paypal.ts` — PayPal REST client: Orders v2, Payouts v1, Refunds, webhook verification
 - `lib/webhook.ts` — in-memory buffer so the Agent activity panel can show real push events
 - `components/` — Capi mascot, money rail, UI primitives, app shell
+
+> **Sign-in needs no database.** The session is one signed HttpOnly cookie holding the Identity API claims (name, email, PayPal account ID). Signing in requires *Log in with PayPal* to be enabled on the app in the PayPal Developer Dashboard, with the Return URL exactly `https://<your-domain>/api/auth/paypal/callback`.
 
 > Demo data lives in `lib/data.ts`; the ledger is not persisted server-side yet. Real PayPal and LLM calls activate as soon as the env vars above exist.
 
