@@ -50,6 +50,7 @@ Connected that way, the profile becomes the user's own: name, handle, city, bio 
 | `design-prototype.html` | Early self-contained interactive prototype of the 5-step flow |
 | `supabase/` | One SQL file that creates the public-profile table (`setup.sql`) |
 | `tools/` | Local Playwright screenshot helpers (dev only, not deployed) |
+| `docs/` | Notes on tooling — incl. [the APIMatic Context Plugin audit](docs/apimatic-context-plugin.md) behind the PayPal transport |
 
 ## Run it
 
@@ -94,6 +95,7 @@ The table has row level security on with no policies, so only the server can rea
 | **PayPal webhooks** | `PAYMENT.CAPTURE.COMPLETED` and friends, verified against PayPal's signature and written to the activity log |
 | **Log in with PayPal** (Identity API) | Real sign-in; the profile is keyed to the PayPal account id, which doubles as a Payouts receiver |
 | **AG Studio (AG Grid)** | The Insights dashboard: self-serve widgets over orders, PayPal money events and agent runs, themed with Lunas' palette, plus a starter report and cross-filtering |
+| **APIMatic PayPal Server SDK Context Plugin** | Its TypeScript skills were audited against our own PayPal REST client and drove real fixes: per-attempt timeouts, retries inside a wait budget and only where a call is idempotent, and PayPal's `debug_id` kept on errors — see [docs/apimatic-context-plugin.md](docs/apimatic-context-plugin.md) |
 | **Supabase** | Stores published profiles so a client on another device sees the real page |
 | **LLM + deterministic fallback** | Contract drafting, delivery verification and dispute mediation; the deterministic engine keeps the demo alive with no key configured |
 
@@ -161,6 +163,7 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 - [x] **Delivery verification that reads the actual files** — count, format, dimensions, transparency, background whiteness and word counts measured in the browser; a criterion nothing could measure is reported as needing a human eye, never as a pass
 - [x] Profile: photo upload (resized in the browser), social links (X, LinkedIn, Instagram, website) and a portfolio list that clients see on the public page
 - [x] PayPal REST integration: Orders v2 create + capture, Payouts v1 release, Payments v1 refund, webhook signature verification
+- [x] PayPal transport hardened after an audit against the **APIMatic Context Plugin** skills: per-attempt timeouts (a token exchange included), retries with backoff inside a total wait budget, retried only where an idempotency key makes the call safe to repeat, and PayPal's `debug_id`/`details[]` preserved on failures — verified offline by `web/scripts/uji-transport-paypal.sh` (21 assertions)
 - [x] Contract / Verification / Mediator agents with LLM + local fallback
 - [ ] Durable storage for orders and the webhook buffer (currently in-memory demo data)
 - [ ] Print-level checks in verification (PDF page size, DPI, colour bleed) — a browser cannot read them, so those criteria are flagged for the client instead of guessed

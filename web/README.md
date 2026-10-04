@@ -81,7 +81,8 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 - `components/AgStudioView.tsx` — the AG Studio instance, its Lunas theme and the starter report
 - `lib/data.ts` — mock ledger + local brief parser (the fallback the Contract Agent uses)
 - `lib/agent.ts` — Contract / Verification / Mediator agents (LLM + local fallback)
-- `lib/paypal.ts` — PayPal REST client: Orders v2, Payouts v1, Refunds, webhook verification
+- `lib/paypal.ts` — PayPal REST client: Orders v2, Payouts v1, Refunds, webhook verification. Reviewed against the **APIMatic PayPal Server SDK Context Plugin** (TypeScript skills) — see [`../docs/apimatic-context-plugin.md`](../docs/apimatic-context-plugin.md)
+- `scripts/uji-transport-paypal.sh` — offline proof for the above: stubs PayPal, asserts 21 transport behaviours (no credentials, no network)
 - `lib/webhook.ts` — in-memory buffer so the Agent activity panel can show real push events
 - `components/` — Capi mascot, money rail, UI primitives, app shell
 
