@@ -223,6 +223,8 @@ export function Product({ kind, bg = "#fff", style }: { kind: ProductKind; bg?: 
     watch: <><rect x="43" y="18" width="14" height="64" rx="4" fill="#B79CFF" stroke="#231942" strokeWidth="2.5" /><circle cx="50" cy="50" r="16" fill="#FFF" stroke="#231942" strokeWidth="3.5" /><path d="M50 50v-8M50 50h6" stroke="#231942" strokeWidth="2.5" strokeLinecap="round" /></>,
     plant: <><path d="M50 56q-18-6-16-24q14 4 16 24zM50 56q18-6 16-24q-14 4-16 24z" fill="#6EDCA8" stroke="#231942" strokeWidth="2.5" /><path d="M35 57h30l-4 25H39z" fill="#FFAE7A" stroke="#231942" strokeWidth="2.5" /></>,
     cap: <><path d="M24 64q0-26 26-26t26 26z" fill="#7DB9FF" stroke="#231942" strokeWidth="2.5" /><path d="M24 64h50q8 0 8 6H24z" fill="#231942" /></>,
+    // a vertical frame with a play mark — the icon for video work
+    reel: <><rect x="30" y="18" width="40" height="64" rx="7" fill="#231942" /><rect x="34" y="22" width="32" height="56" rx="5" fill="#B79CFF" /><path d="M46 40l14 10-14 10z" fill="#FFF" stroke="#231942" strokeWidth="1.5" /></>,
   };
   return (
     <svg viewBox="0 0 100 100" style={{ display: "block", width: "100%", height: "100%", ...style }}>

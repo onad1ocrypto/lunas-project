@@ -33,6 +33,100 @@ const SAMPLE_PX = 220; // analysis is done on a downscaled copy
 
 const WHITE = 242; // "pure white" for a product shot; a grey cast lands far below this
 
+/**
+ * A video's own metadata: length and frame size. The browser reads both from
+ * the file before a single frame is drawn, so no server-side probe is needed.
+ */
+async function videoMetadata(file: File): Promise<{ durationSec?: number; width?: number; height?: number } | null> {
+  const url = URL.createObjectURL(file);
+  try {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.muted = true;
+    v.src = url;
+    await new Promise<void>((resolve, reject) => {
+      const done = () => resolve();
+      v.onloadedmetadata = done;
+      v.onerror = () => reject(new Error("metadata"));
+      setTimeout(done, 8000); // a file the browser cannot decode must not hang the upload
+    });
+    if (!Number.isFinite(v.duration)) {
+      /* WebM written by MediaRecorder often carries no duration in its header,
+         so the element reports Infinity. Seeking far past the end makes the
+         decoder walk the file and report the real length. */
+      await new Promise<void>((resolve) => {
+        const finish = () => resolve();
+        v.ondurationchange = () => {
+          if (Number.isFinite(v.duration)) finish();
+        };
+        v.onseeked = finish;
+        setTimeout(finish, 4000);
+        try {
+          v.currentTime = 1e101;
+        } catch {
+          finish();
+        }
+      });
+    }
+    const out = {
+      durationSec: Number.isFinite(v.duration) ? v.duration : undefined,
+      width: v.videoWidth || undefined,
+      height: v.videoHeight || undefined,
+    };
+    return out.durationSec === undefined && out.width === undefined ? null : out;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Mean level of the audio track in dBFS (RMS), in the browser.
+ *
+ * Honest about what it is: this detects a missing or near-silent track and
+ * gives a rough level — it is not a broadcast LUFS measurement. A file large
+ * enough to make decoding expensive is skipped rather than blocked, and the
+ * criterion then reports that it could not be measured.
+ */
+const AUDIO_DECODE_LIMIT = 60 * 1024 * 1024;
+
+/**
+ * `hasAudio` is deliberately three-valued:
+ *   true      — a track decoded and it is not silent
+ *   false     — a track decoded and it is silence
+ *   undefined — no track, or this browser could not decode it; we do not guess
+ */
+async function audioLevel(file: File): Promise<{ dbfs?: number; hasAudio?: boolean; durationSec?: number }> {
+  if (file.size > AUDIO_DECODE_LIMIT) return {}; // too big to decode here: claim nothing either way
+  const Ctx: typeof AudioContext | undefined =
+    window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctx) return {};
+  const ctx = new Ctx();
+  try {
+    const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+    let sum = 0;
+    let n = 0;
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const data = buf.getChannelData(c);
+      // every 8th sample is plenty for a mean level and keeps a long file cheap
+      for (let i = 0; i < data.length; i += 8) {
+        sum += data[i] * data[i];
+        n++;
+      }
+    }
+    const durationSec = Number.isFinite(buf.duration) ? buf.duration : undefined;
+    if (!n) return { hasAudio: false, durationSec };
+    const rms = Math.sqrt(sum / n);
+    if (rms <= 0) return { hasAudio: false, durationSec };
+    return { hasAudio: true, dbfs: 20 * Math.log10(rms), durationSec };
+  } catch {
+    return {}; // undecodable here is not the same as silent
+  } finally {
+    void ctx.close();
+  }
+}
+
 async function pixelsOf(file: File): Promise<{ width: number; height: number; whiteRatio: number; bgWhite: number; avgSaturation: number; alpha: boolean } | null> {
   try {
     const bmp = await createImageBitmap(file);
@@ -105,9 +199,23 @@ export async function measureFiles(files: File[]): Promise<FileFacts[]> {
   const out: FileFacts[] = [];
   for (const f of files) {
     const base: FileFacts = { name: f.name, mime: f.type || "application/octet-stream", sizeBytes: f.size };
+    const e = (f.name.split(".").pop() || "").toLowerCase();
+    const video = base.mime.startsWith("video/") || ["mp4", "mov", "m4v", "webm", "mkv", "avi"].includes(e);
+    const audio = base.mime.startsWith("audio/") || ["mp3", "wav", "m4a", "aac", "ogg", "opus", "flac"].includes(e);
     if (base.mime.startsWith("image/")) {
       const px = await pixelsOf(f);
       if (px) Object.assign(base, px);
+    } else if (video) {
+      const meta = await videoMetadata(f);
+      if (meta) Object.assign(base, meta);
+      const level = await audioLevel(f);
+      if (typeof level.hasAudio === "boolean") base.hasAudio = level.hasAudio;
+      if (typeof level.dbfs === "number") base.dbfs = level.dbfs;
+    } else if (audio) {
+      const level = await audioLevel(f);
+      if (typeof level.hasAudio === "boolean") base.hasAudio = level.hasAudio;
+      if (typeof level.dbfs === "number") base.dbfs = level.dbfs;
+      if (typeof level.durationSec === "number") base.durationSec = level.durationSec;
     } else if (/(text\/|json|csv|xml)/.test(base.mime) || /\.(txt|md|csv|json)$/i.test(f.name)) {
       base.text = await f.text().catch(() => "");
     }
@@ -171,6 +279,130 @@ export async function makeSampleFiles(count = 20, grey = true): Promise<File[]> 
   return files;
 }
 
+/* ---------- the demo reel, recorded for real ---------- */
+
+/** One frame of the sample reel: vertical, branded, with a visible progress bar. */
+function drawReelFrame(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, total: number) {
+  const g = ctx.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, "#231942");
+  g.addColorStop(1, "#4b3a8f");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  // the vase being "filmed", drifting slowly
+  const bob = Math.sin(t * 1.2) * 18;
+  ctx.save();
+  ctx.translate(w / 2, h * 0.52 + bob);
+  ctx.fillStyle = "rgba(0,0,0,.25)";
+  ctx.beginPath();
+  ctx.ellipse(0, 420, 250, 34, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#FFAE7A";
+  ctx.strokeStyle = "#FFF7EC";
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(-90, -300);
+  ctx.bezierCurveTo(-260, -60, -230, 300, 0, 320);
+  ctx.bezierCurveTo(230, 300, 260, -60, 90, -300);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // the shop logo, on screen for the first three seconds — exactly what the brief asks
+  if (t < 3) {
+    ctx.globalAlpha = Math.min(1, 3 - t) * 0.95;
+    ctx.fillStyle = "#FFD84D";
+    ctx.font = "800 68px system-ui, -apple-system, Segoe UI, sans-serif";
+    ctx.fillText("SOFIA CERAMICS", 70, 150);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.fillStyle = "#FFF7EC";
+  ctx.font = "600 96px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.fillText("New glazes", 70, h - 320);
+  ctx.font = "600 120px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.fillText("Autumn 2026", 70, h - 180);
+
+  // progress bar
+  ctx.fillStyle = "rgba(255,255,255,.25)";
+  ctx.fillRect(70, h - 90, w - 140, 12);
+  ctx.fillStyle = "#6EDCA8";
+  ctx.fillRect(70, h - 90, (w - 140) * Math.min(1, t / total), 12);
+}
+
+/**
+ * A real vertical reel, recorded in the browser with MediaRecorder: a 1080×1920
+ * canvas at 30fps plus an audio track from a steady tone. Nothing is downloaded
+ * from the internet, and the file that lands in the delivery is a genuine video
+ * the measuring code has to decode for itself — the only honest way to demo
+ * duration, aspect ratio and audio levels.
+ */
+export async function makeSampleVideo(seconds = 6): Promise<File[]> {
+  const W = 1080;
+  const H = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return [];
+  const stream = canvas.captureStream(30);
+
+  // an audio track at roughly -20 dBFS, so "audio mixed" is a real measurement
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  let audioCtx: AudioContext | undefined;
+  let osc: OscillatorNode | undefined;
+  if (Ctx) {
+    try {
+      audioCtx = new Ctx();
+      const dest = audioCtx.createMediaStreamDestination();
+      osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = 220;
+      gain.gain.value = 0.15; // sine → RMS ≈ -19.5 dBFS
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start();
+      for (const track of dest.stream.getAudioTracks()) stream.addTrack(track);
+    } catch {
+      /* no audio available: the criterion will report that honestly */
+    }
+  }
+
+  const mime = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm"].find(
+    (m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m)
+  );
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 4_000_000 } : undefined);
+  const chunks: BlobPart[] = [];
+  rec.ondataavailable = (e) => {
+    if (e.data.size) chunks.push(e.data);
+  };
+  const stopped = new Promise<void>((res) => {
+    rec.onstop = () => res();
+  });
+  rec.start();
+
+  const t0 = performance.now();
+  await new Promise<void>((res) => {
+    const frame = () => {
+      const t = (performance.now() - t0) / 1000;
+      drawReelFrame(ctx, W, H, t, seconds);
+      if (t < seconds) requestAnimationFrame(frame);
+      else res();
+    };
+    frame();
+  });
+
+  rec.stop();
+  await stopped;
+  osc?.stop();
+  void audioCtx?.close();
+
+  const type = (mime || "video/webm").split(";")[0];
+  const blob = new Blob(chunks, { type });
+  return [new File([blob], `reel-9x16.${type === "video/mp4" ? "mp4" : "webm"}`, { type })];
+}
+
 /* ---------- the panel ---------- */
 
 export function DeliveryPanel({
@@ -178,11 +410,14 @@ export function DeliveryPanel({
   status,
   setStatus,
   log,
+  onVerdict,
 }: {
   order: Order;
   status: Status;
   setStatus: (s: Status) => void;
   log: (l: Log) => void;
+  /** How the check ended: what was measured, and what still needs an eye. */
+  onVerdict?: (v: { measured: number; manual: number; failed: number }) => void;
 }) {
   const { t } = useI18n();
   const [files, setFiles] = useState<File[]>([]);
@@ -192,10 +427,25 @@ export function DeliveryPanel({
   const [notes, setNotes] = useState<string[]>(() => order.criteria.map(() => ""));
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const imageFiles = useMemo(() => files.filter((f) => f.type.startsWith("image/")), [files]);
-  const thumbs = useMemo(() => imageFiles.slice(0, 8).map((f) => URL.createObjectURL(f)), [imageFiles]);
-  const imageNames = useMemo(() => imageFiles.slice(0, 8).map((f) => f.name), [imageFiles]);
+  const previews = useMemo(() => {
+    const out: { url: string; name: string; video: boolean }[] = [];
+    for (const f of files) {
+      const e = (f.name.split(".").pop() || "").toLowerCase();
+      const video = f.type.startsWith("video/") || ["mp4", "mov", "m4v", "webm"].includes(e);
+      if (!f.type.startsWith("image/") && !video) continue;
+      out.push({ url: URL.createObjectURL(f), name: f.name, video });
+      if (out.length >= 6) break;
+    }
+    return out;
+  }, [files]);
   const uploaded = files.length > 0;
+  /** Does this contract ask about video or audio? Then the sample should be one. */
+  const videoJob = useMemo(
+    () =>
+      order.criteria.some((c) => /duration|audio|aspect|dbfs|count\((videos|clips|audio|reels)/i.test(c.rule)) ||
+      /reel|video|podcast|voice/i.test(`${order.title} ${order.brief}`),
+    [order.criteria, order.title, order.brief]
+  );
   const totalMb = useMemo(() => (files.reduce((s, f) => s + f.size, 0) / 1_048_576).toFixed(1), [files]);
 
   const take = useCallback(
@@ -258,6 +508,11 @@ export function DeliveryPanel({
 
     const failed = results.filter((r) => !r.pass && r.kind !== "manual");
     const manualOnly = results.filter((r) => !r.pass && r.kind === "manual");
+    onVerdict?.({
+      measured: results.filter((r) => r.kind === "measured" && r.pass).length,
+      manual: manualOnly.length,
+      failed: failed.length,
+    });
     await sleep(400);
     if (failed.length) {
       const idx = results.findIndex((r) => !r.pass && r.kind !== "manual");
@@ -280,7 +535,7 @@ export function DeliveryPanel({
         ? { c: "var(--lav)", i: "bot", t: t("dl.verT"), s: t("dl.verB") }
         : { c: "var(--sky)", i: "upload", t: t("dl.t"), s: t("dl.b") };
 
-  const measuredCount = facts.filter((f) => f.width).length;
+  const measuredCount = facts.filter((f) => f.width || f.durationSec !== undefined || f.text !== undefined).length;
 
   return (
     <div className="card pad" style={{ background: status === "revision" ? "var(--peach-l)" : status === "verifying" ? "var(--lav-l)" : "var(--sky-l)" }}>
@@ -319,18 +574,19 @@ export function DeliveryPanel({
             onClick={async (e) => {
               e.stopPropagation();
               setBusy("sample");
-              const list = await makeSampleFiles(20, true);
+              // a video/audio job gets a real recorded reel, not 20 product shots
+              const list = videoJob ? await makeSampleVideo() : await makeSampleFiles(20, true);
               await take(list, "sample");
             }}
             disabled={!!busy}
           >
-            <Icon name="sparkles" size={15} /> {busy === "sample" ? t("dl.sampleBusy") : t("dl.sample")}
+            <Icon name="sparkles" size={15} /> {busy === "sample" ? t(videoJob ? "dl.sampleBusyVideo" : "dl.sampleBusy") : t("dl.sample")}
           </button>
           <input
             ref={inputRef}
             type="file"
             multiple
-            accept="image/*,.pdf,.txt,.md,.csv,.json"
+            accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json,.mp4,.mov,.webm,.mp3,.wav"
             style={{ display: "none" }}
             data-testid="dl-input"
             onChange={(e) => void take(Array.from(e.target.files ?? []), "drop")}
@@ -340,15 +596,22 @@ export function DeliveryPanel({
         <div className="dl-grid">
           <div className="col" style={{ gap: 10 }}>
             <div className="thumbs stagger">
-              {thumbs.map((src, i) => (
-                <div key={src} className="thumb">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt={`delivery preview ${i + 1}`} />
-                  <span className="thumb-name">{imageNames[i]?.replace(/\.[a-z]+$/i, "") ?? ""}</span>
+              {previews.map((p, i) => (
+                <div key={p.url} className="thumb">
+                  {p.video ? (
+                    <>
+                      <video src={p.url} muted playsInline preload="metadata" />
+                      <span className="thumb-play">▶</span>
+                    </>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={p.url} alt={`delivery preview ${i + 1}`} />
+                  )}
+                  <span className="thumb-name">{p.name.replace(/\.[a-z]+$/i, "")}</span>
                 </div>
               ))}
-              {files.length > thumbs.length && (
-                <div className="thumb more">+{files.length - thumbs.length}</div>
+              {files.length > previews.length && (
+                <div className="thumb more">+{files.length - previews.length}</div>
               )}
             </div>
             <div className="row wrap" style={{ gap: 8 }}>
@@ -363,7 +626,7 @@ export function DeliveryPanel({
                 ref={inputRef}
                 type="file"
                 multiple
-                accept="image/*,.pdf,.txt,.md,.csv,.json"
+                accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json,.mp4,.mov,.webm,.mp3,.wav"
                 style={{ display: "none" }}
                 data-testid="dl-input"
                 onChange={(e) => void take(Array.from(e.target.files ?? []), "drop")}
@@ -424,6 +687,8 @@ export function DeliveryPanel({
         .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
         .thumb{aspect-ratio:1;border:2.5px solid var(--ink);border-radius:14px;overflow:hidden;position:relative;background:#fff}
         .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+        .thumb video{width:100%;height:100%;object-fit:cover;display:block}
+        .thumb-play{position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--cream);display:grid;place-items:center;font-size:10px;line-height:1}
         .thumb.more{display:grid;place-items:center;font-weight:900;border-style:dashed;background:transparent}
         .thumb-name{position:absolute;left:5px;bottom:3px;font-size:9.5px;font-weight:800;color:#5b5280;background:rgba(255,255,255,.75);border-radius:4px;padding:0 3px}
         .chk{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:2.5px solid var(--ink);border-radius:14px;background:var(--paper);transition:background .3s}

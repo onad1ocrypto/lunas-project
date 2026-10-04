@@ -50,7 +50,7 @@ Connected that way, the profile becomes the user's own: name, handle, city, bio 
 | `design-prototype.html` | Early self-contained interactive prototype of the 5-step flow |
 | `supabase/` | One SQL file that creates the public-profile table (`setup.sql`) |
 | `tools/` | Local Playwright screenshot helpers (dev only, not deployed) |
-| `docs/` | Notes on tooling — incl. [the APIMatic Context Plugin audit](docs/apimatic-context-plugin.md) behind the PayPal transport |
+| `docs/` | Notes on tooling — [the APIMatic Context Plugin audit](docs/apimatic-context-plugin.md) behind the PayPal transport, and `docs/evidence/` with the real-file tests for the video verification |
 
 ## Run it
 
@@ -142,13 +142,21 @@ Every criterion comes back with one of three outcomes — and never a fourth:
 
 | Outcome | Meaning |
 |---|---|
-| **measured** | Proved from the uploaded file: file count and formats, image dimensions, PNG transparency, word counts, file names/contents, the delivery deadline. "Background white" is measured as the share of near-white pixels in the *border ring* of the image — measuring the whole picture would fail every photo whose subject is not white. |
+| **measured** | Proved from the uploaded file: file count and formats, image **and video** dimensions, PNG transparency, a **video's duration and audio level** (mean RMS in dBFS), word counts, file names/contents, the delivery deadline. "Background white" is measured as the share of near-white pixels in the *border ring* of the image — measuring the whole picture would fail every photo whose subject is not white. |
 | **llm** | A judgement only a model can make (copy tone, colour harmony). Runs when `LLM_API_KEY` is set; until then the criterion is reported as needing a review instead of silently passing. |
 | **manual** | The browser genuinely cannot read it (PDF page size, DPI, bleed). The client is told which criteria still need their eye. |
 
-**Try it:** open an order, press **Use sample files** and Lunas draws a 20-photo delivery
-with a canvas (real JPEGs, 2000x1500, one of them deliberately grey) — then press
+**Try it — a photo job:** open order `LNS-0142`, press **Use sample files** and Lunas draws a 20-photo
+delivery with a canvas (real JPEGs, 2000x1500, one of them deliberately grey) — then press
 **Run verification**. The revision you get is a measurement of that file, not a script.
+
+**Try it — a video job:** open order `LNS-0152` (a 9:16 reel brief) and press **Use sample files** again.
+This time the browser *records a real reel* with `MediaRecorder` — a 1080x1920 canvas at 30fps plus an
+audio tone — and verification measures it: 1 video, mp4/webm, 6.0s of 60s, 9:16, **audio at −19.5 dBFS**,
+and one criterion (the logo in the first 3 seconds) handed to your eye because no rule can watch a video.
+Upload a 75-second cut instead and it fails by name (`reel-75s.mp4 runs 75.0s`); upload one whose audio
+track is silent and it fails too (`carries no audible track`). No browser user uploads a real file to a
+fake checker — the numbers above come from decoding the file you gave it.
 
 ## Brand
 
@@ -161,6 +169,7 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 - [x] Publish a profile to Supabase so clients see the real photo and portfolio on `/to/<handle>`
 - [x] **Insights** — a self-serve dashboard (AG Studio) over the orders, the PayPal money events and the agent runs
 - [x] **Delivery verification that reads the actual files** — count, format, dimensions, transparency, background whiteness and word counts measured in the browser; a criterion nothing could measure is reported as needing a human eye, never as a pass
+- [x] **Not just photos:** video and audio are measured too — duration, frame size and aspect ratio from the file's own metadata, and the audio track's mean level in dBFS (RMS), tested against real files (see `docs/evidence/`); a silent render fails, an unreadable track is handed to a human
 - [x] Profile: photo upload (resized in the browser), social links (X, LinkedIn, Instagram, website) and a portfolio list that clients see on the public page
 - [x] PayPal REST integration: Orders v2 create + capture, Payouts v1 release, Payments v1 refund, webhook signature verification
 - [x] PayPal transport hardened after an audit against the **APIMatic Context Plugin** skills: per-attempt timeouts (a token exchange included), retries with backoff inside a total wait budget, retried only where an idempotency key makes the call safe to repeat, and PayPal's `debug_id`/`details[]` preserved on failures — verified offline by `web/scripts/uji-transport-paypal.sh` (21 assertions)

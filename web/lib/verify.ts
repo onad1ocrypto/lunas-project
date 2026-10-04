@@ -2,18 +2,22 @@
    The verification engine.
 
    Criteria in Lunas are written as machine-checkable rules, e.g.
-   "count(files) == 20", "max(w,h) \u2265 2000", "vision: bg \u2265 97% #FFF".
+   "count(files) == 20", "max(w,h) \u2265 2000", "vision: bg \u2265 97% #FFF",
+   "duration \u2264 60", "audio \u2265 -24 dBFS".
    This module turns those strings into real checks against the files a
-   freelancer actually uploaded.
+   freelancer actually uploaded — photos, design files, documents, video,
+   audio: whoever is being paid for the work, not just whoever edits photos.
 
    Three outcomes per criterion:
-     measured  — proved from the file itself (count, format, pixels, words)
+     measured  — proved from the file itself (count, format, pixels, words,
+                 a video's duration/resolution, an audio track that is not silent)
      llm       — judged by a vision model (only when LLM_API_KEY is set)
-     manual    — cannot be measured here (PDF bleed, DPI, page size); the
-                 client is asked to eyeball it. Never silently "pass".
+     manual    — cannot be measured here (PDF bleed, DPI, page size, whether a
+                 cut "feels" right); the client is asked to eyeball it. Never
+                 silently "pass".
 
-   Nothing here touches the DOM: the browser measures pixels and sends the
-   numbers, this file only decides.
+   Nothing here touches the DOM: the browser measures pixels, decoded media and
+   audio levels and sends the numbers, this file only decides.
    ========================================================= */
 
 export interface FileFacts {
@@ -36,6 +40,19 @@ export interface FileFacts {
   alpha?: boolean;
   /** Decoded text for text-like files, used by contains() and word counts. */
   text?: string;
+  /**
+   * Length of a video/audio file in seconds, read from its own metadata.
+   * Undefined for anything that is not timed media.
+   */
+  durationSec?: number;
+  /**
+   * Mean level of the audio track in dBFS (RMS, measured in the browser's
+   * WebAudio). This is a loudness *indication*, not a broadcast LUFS reading —
+   * the rules say "dBFS (RMS)" so nobody mistakes it for one.
+   */
+  dbfs?: number;
+  /** True when a decoded audio track exists at all (a silent video has none). */
+  hasAudio?: boolean;
   /** Pages, DPI and print geometry are not readable in a browser. */
   pages?: number;
   dpi?: number;
@@ -61,11 +78,17 @@ export interface VerifyContext {
 const ext = (name: string) => (name.split(".").pop() || "").toLowerCase();
 const isImage = (f: FileFacts) => f.mime.startsWith("image/");
 const isText = (f: FileFacts) => f.mime.startsWith("text/") || ["txt", "md", "csv"].includes(ext(f.name));
+const isVideo = (f: FileFacts) => f.mime.startsWith("video/") || ["mp4", "mov", "m4v", "webm", "mkv", "avi"].includes(ext(f.name));
+const isAudio = (f: FileFacts) => f.mime.startsWith("audio/") || ["mp3", "wav", "m4a", "aac", "ogg", "opus", "flac"].includes(ext(f.name));
+/** Pictures and video frames both have pixel dimensions. */
+const isVisual = (f: FileFacts) => isImage(f) || isVideo(f);
 
-/** Which files a collection rule counts: "files", "images", "docs", "slides", "concepts". */
+/** Which files a collection rule counts: "files", "images", "videos", "docs", "slides", "concepts". */
 function collectionOf(kind: string, files: FileFacts[]): FileFacts[] {
   const k = kind.toLowerCase();
   if (k === "images" || k === "image") return files.filter(isImage);
+  if (k === "videos" || k === "video" || k === "clips" || k === "reels") return files.filter(isVideo);
+  if (k === "audio" || k === "tracks") return files.filter(isAudio);
   if (k === "docs" || k === "documents") return files.filter((f) => ["pdf", "doc", "docx", "txt", "md"].includes(ext(f.name)));
   if (k === "slides") return files.filter((f) => ["ppt", "pptx", "key"].includes(ext(f.name)));
   // "files", "concepts", "photos", anything else: the whole delivery
@@ -92,16 +115,77 @@ function checkCount(rule: string, files: FileFacts[]): RuleResult | null {
   };
 }
 
-/** "formats \u2287 {pdf, pptx}" — every listed extension must be present. */
+/**
+ * "formats \u2287 {pdf, pptx}" / "mime \u2208 {jpg, mp4}" — every listed format must be present.
+ *
+ * The brief parser writes `mime \u2208 {jpg}` when a client types a format, which no
+ * extension-free comparison could ever satisfy, so both spellings land here and
+ * a bare extension is matched against the files' extensions *and* their mime
+ * types (`mp4` \u2194 `video/mp4`, `jpeg` \u2194 `image/jpeg`).
+ */
+const MIME_ALIASES: Record<string, string[]> = {
+  jpg: ["jpeg", "jpg", "image/jpeg"],
+  jpeg: ["jpeg", "jpg", "image/jpeg"],
+  png: ["png", "image/png"],
+  svg: ["svg", "image/svg+xml"],
+  webp: ["webp", "image/webp"],
+  gif: ["gif", "image/gif"],
+  pdf: ["pdf", "application/pdf"],
+  docx: ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  pptx: ["pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  xlsx: ["xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  mp4: ["mp4", "m4v", "video/mp4"],
+  mov: ["mov", "video/quicktime"],
+  webm: ["webm", "video/webm"],
+  mp3: ["mp3", "audio/mpeg"],
+  wav: ["wav", "audio/wav", "audio/x-wav"],
+  m4a: ["m4a", "audio/mp4", "audio/x-m4a"],
+};
+
+const extOfMime = (mime: string) => {
+  const m = mime.toLowerCase().match(/\/(?:x-)?([a-z0-9.+-]+)/);
+  return m ? m[1] : "";
+};
+
 function checkFormats(rule: string, files: FileFacts[]): RuleResult | null {
-  const m = rule.match(/formats?\s*(?:\u2287|\u2286|>=|<=|in)\s*\{([^}]+)\}/i);
+  const inSet = rule.match(/mime\s*(?:\u2208|in)\s*\{([^}]+)\}/i);
+  const present = rule.match(/formats?\s*(?:\u2287|>=|in)\s*\{([^}]+)\}/i);
+  const m = inSet || present;
   if (!m) return null;
   const want = m[1].split(",").map((s) => s.trim().toLowerCase().replace(/^\./, "")).filter(Boolean);
-  const have = new Set(files.map((f) => ext(f.name)));
-  const missing = want.filter((w) => !have.has(w));
+  const have: string[] = [];
+  for (const f of files) {
+    const e = ext(f.name);
+    have.push(e, f.mime.toLowerCase(), extOfMime(f.mime));
+    const alias = MIME_ALIASES[e];
+    if (alias) have.push(...alias);
+    const fromMime = Object.entries(MIME_ALIASES).find(([, list]) => list.includes(extOfMime(f.mime)));
+    if (fromMime) have.push(fromMime[0], ...fromMime[1]);
+  }
+  const set = new Set(have.filter(Boolean));
+  const holds = (w: string) => set.has(w) || (MIME_ALIASES[w] || []).some((a) => set.has(a));
+
+  /* "mime \u2208 {mp4, webm}" is membership: the delivery has to be one of these.
+     "formats \u2287 {svg, png}" is presence: both have to appear. Reading \u2208 as
+     "all of them" would fail every file in a delivery that offers a choice. */
+  if (inSet) {
+    const spread = [...new Set(files.map((f) => ext(f.name)).filter(Boolean))];
+    const wrong = spread.filter((e) => !want.some((w) => holds(w) || (MIME_ALIASES[w] || []).includes(e)));
+    return {
+      pass: wrong.length === 0 && files.length > 0,
+      note: wrong.length
+        ? `${wrong.join(", ")} not in ${want.map((w) => `.${w}`).join(" / ")}`
+        : want.map((w) => `.${w}`).join(" / "),
+      kind: "measured",
+    };
+  }
+
+  const missing = want.filter((w) => !holds(w));
   return {
-    pass: missing.length === 0,
-    note: missing.length ? `missing ${missing.join(", ")} (have ${[...have].join(", ") || "nothing"})` : want.map((w) => `.${w}`).join(" + "),
+    pass: missing.length === 0 && files.length > 0,
+    note: missing.length
+      ? `missing ${missing.join(", ")} (have ${[...new Set(files.map((f) => ext(f.name)).filter(Boolean))].join(", ") || "nothing"})`
+      : want.map((w) => `.${w}`).join(" + "),
     kind: "measured",
   };
 }
@@ -150,8 +234,10 @@ function checkAlpha(rule: string, files: FileFacts[]): RuleResult | null {
 /** "max(w,h) \u2265 2000", "w == 1080 && h == 1350", "w == h == 500" */
 function checkDimensions(rule: string, files: FileFacts[]): RuleResult | null {
   if (!/(max\s*\(\s*w\s*,\s*h\s*\)|w\s*==|h\s*==)/i.test(rule)) return null;
-  const images = files.filter((f) => isImage(f) && f.width && f.height);
-  if (!images.length) return { pass: false, note: "no image dimensions to check", kind: "measured" };
+  // Pictures and video frames both carry pixel dimensions: a 1080×1920 reel
+  // satisfies "w == 1080 && h == 1920" exactly like a still would.
+  const images = files.filter((f) => isVisual(f) && f.width && f.height);
+  if (!images.length) return { pass: false, note: "no image or video dimensions to check", kind: "measured" };
 
   const maxDim = (f: FileFacts) => Math.max(f.width!, f.height!);
 
@@ -193,6 +279,143 @@ function checkDimensions(rule: string, files: FileFacts[]): RuleResult | null {
   return null;
 }
 
+/** "duration \u2264 60", "duration == 30", "15 \u2264 duration \u2264 90" — read from the file's own metadata. */
+function checkDuration(rule: string, files: FileFacts[]): RuleResult | null {
+  if (!/duration/i.test(rule)) return null;
+  const timed = files.filter((f) => isVideo(f) || isAudio(f));
+  const known = timed.filter((f) => typeof f.durationSec === "number");
+  if (!timed.length)
+    return { pass: false, note: "no video or audio file in the delivery to time", kind: "measured" };
+  if (!known.length)
+    return { pass: false, note: "the player could not read this file's duration — please confirm it", kind: "manual" };
+
+  const longest = known.reduce((a, b) => (a.durationSec! >= b.durationSec! ? a : b));
+  const show = (v: number) => `${v.toFixed(1)}s`;
+
+  const range = rule.match(/(\d+(?:\.\d+)?)\s*(?:\u2264|<=|<)\s*duration\s*(?:\u2264|<=|<)\s*(\d+(?:\.\d+)?)/i);
+  if (range) {
+    const [lo, hi] = [Number(range[1]), Number(range[2])];
+    const ok = known.every((f) => f.durationSec! >= lo && f.durationSec! <= hi);
+    const bad = known.find((f) => f.durationSec! < lo || f.durationSec! > hi);
+    return {
+      pass: ok,
+      note: ok ? `longest is ${show(longest.durationSec!)}` : `${bad!.name} runs ${show(bad!.durationSec!)} (needs ${lo}\u2013${hi}s)`,
+      kind: "measured",
+    };
+  }
+
+  const op = rule.match(/duration\s*(==|\u2264|<=|<|\u2265|>=|>)\s*(\d+(?:\.\d+)?)/i);
+  if (op) {
+    const want = Number(op[2]);
+    const fails = known.filter((f) => {
+      const d = f.durationSec!;
+      switch (op[1]) {
+        case "==": return Math.abs(d - want) > 0.5;
+        case "\u2264": case "<=": case "<": return d > want;
+        case "\u2265": case ">=": case ">": return d < want;
+        default: return false;
+      }
+    });
+    const worst = fails[0];
+    return {
+      pass: fails.length === 0,
+      note: fails.length
+        ? `${worst.name} runs ${show(worst.durationSec!)} (rule: ${op[1]} ${want}s)`
+        : `longest is ${show(longest.durationSec!)} (rule: ${op[1]} ${want}s)`,
+      kind: "measured",
+    };
+  }
+
+  // "duration present" — timed media that actually has a length
+  return { pass: known.length === timed.length, note: `${known.length} of ${timed.length} timed file(s) read`, kind: "measured" };
+}
+
+/**
+ * "audio \u2265 -24 dBFS (RMS)" / "audio present" — a silent render fails, a quiet one is reported.
+ *
+ * RMS in dBFS is what WebAudio can honestly give: it says whether the track is
+ * there and roughly how loud, not whether it meets a broadcast LUFS target. A
+ * track this browser could not decode is never called silent — it is handed to
+ * a human instead, unless another file already proved a real violation.
+ */
+function checkAudio(rule: string, files: FileFacts[]): RuleResult | null {
+  if (!/\baudio\b|\bdbfs\b|loudness/i.test(rule)) return null;
+  const timed = files.filter((f) => isVideo(f) || isAudio(f));
+  if (!timed.length) return { pass: false, note: "no video or audio file in the delivery", kind: "measured" };
+
+  /** a number = measured level, null = decoded silence, undefined = could not read */
+  const levelOf = (f: FileFacts): number | null | undefined =>
+    typeof f.dbfs === "number" ? f.dbfs : f.hasAudio === false ? null : undefined;
+
+  const unknown = timed.filter((f) => levelOf(f) === undefined);
+  const min = rule.match(/(?:audio|loudness)\s*(?:\u2265|>=|>)\s*(-?\d+(?:\.\d+)?)\s*(?:db|dbfs)?/i);
+
+  if (!min) {
+    // "audio present": every timed file must carry a track that is not silent
+    const silent = timed.filter((f) => levelOf(f) === null);
+    if (silent.length)
+      return { pass: false, note: `${silent[0].name} carries no audible track`, kind: "measured" };
+    if (unknown.length)
+      return { pass: false, note: `no audio could be read from ${unknown.length} file(s) — please listen`, kind: "manual" };
+    const levels = timed.map((f) => f.dbfs!);
+    const mean = levels.reduce((a, b) => a + b, 0) / levels.length;
+    return { pass: true, note: `${timed.length} file(s) with audio, mean ${mean.toFixed(1)} dBFS`, kind: "measured" };
+  }
+
+  const floor = Number(min[1]);
+  const silent = timed.filter((f) => levelOf(f) === null);
+  const measured = timed.filter((f) => typeof levelOf(f) === "number");
+  const quietest = measured.length ? measured.reduce((a, b) => (levelOf(a)! <= levelOf(b)! ? a : b)) : null;
+
+  // A definite violation is reported before anything is handed to a human.
+  if (silent.length)
+    return { pass: false, note: `${silent[0].name} carries no audible track (needs \u2265 ${floor} dBFS)`, kind: "measured" };
+  if (quietest && levelOf(quietest)! < floor)
+    return { pass: false, note: `${quietest.name} averages ${levelOf(quietest)!.toFixed(1)} dBFS (needs \u2265 ${floor} dBFS)`, kind: "measured" };
+  if (unknown.length)
+    return { pass: false, note: "no audio could be read from this file (silent or a format this browser cannot decode) — please listen", kind: "manual" };
+  return {
+    pass: true,
+    note: `mean audio level ${levelOf(measured[0])!.toFixed(1)} dBFS (floor ${floor} dBFS)`,
+    kind: "measured",
+  };
+}
+
+/** "aspect == 9:16", "aspect == 1:1" — from the pixel dimensions of the pictures or video. */
+function checkAspect(rule: string, files: FileFacts[]): RuleResult | null {
+  if (!/aspect/i.test(rule)) return null;
+  const m = rule.match(/aspect\s*(?:==|\u2248)\s*(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/i);
+  if (!m) return null;
+  const want = Number(m[1]) / Number(m[2]);
+  const visual = files.filter((f) => isVisual(f) && f.width && f.height);
+  if (!visual.length) return { pass: false, note: "no image or video to take a ratio from", kind: "measured" };
+  const ratio = (f: FileFacts) => f.width! / f.height!;
+  const bad = visual.filter((f) => Math.abs(ratio(f) - want) / want > 0.02);
+  const worst = bad[0];
+  return {
+    pass: bad.length === 0,
+    note: bad.length
+      ? `${worst.name} is ${ratio(worst).toFixed(3)}:1, not ${m[1]}:${m[2]}`
+      : `all ${visual.length} at ${m[1]}:${m[2]}`,
+    kind: "measured",
+  };
+}
+
+/** "size \u2264 200 MB" — per file, the cap a platform imposes (YouTube, Vimeo, email). */
+function checkFileSize(rule: string, files: FileFacts[]): RuleResult | null {
+  const m = rule.match(/size\s*(?:\u2264|<=|<)\s*(\d+(?:\.\d+)?)\s*(mb|gb)/i);
+  if (!m) return null;
+  const cap = Number(m[1]) * (m[2].toLowerCase() === "gb" ? 1024 : 1);
+  const mb = (f: FileFacts) => f.sizeBytes / (1024 * 1024);
+  const biggest = files.reduce((a, b) => (mb(a) >= mb(b) ? a : b));
+  const ok = files.every((f) => mb(f) <= cap);
+  return {
+    pass: ok,
+    note: ok ? `heaviest file ${mb(biggest).toFixed(1)} MB` : `${biggest.name} is ${mb(biggest).toFixed(1)} MB (cap ${cap} MB)`,
+    kind: "measured",
+  };
+}
+
 /** "vision: bg \u2265 97% #FFF" / "vision: avg saturation < 45%" — measured from real pixels. */
 function checkVision(rule: string, files: FileFacts[]): RuleResult | null {
   if (!/^vision/i.test(rule.trim()) && !/\bvision\b/i.test(rule)) return null;
@@ -201,6 +424,12 @@ function checkVision(rule: string, files: FileFacts[]): RuleResult | null {
   if (bg) {
     const want = Number(bg[1]) / 100;
     const images = files.filter((f) => isImage(f) && typeof f.bgWhite === "number");
+    if (!images.length && files.some(isVideo))
+      return {
+        pass: false,
+        note: "a video's background changes frame by frame — play it and judge for yourself",
+        kind: "manual",
+      };
     if (!images.length) return { pass: false, note: "no image pixels to measure", kind: "measured" };
     const worst = images.reduce((a, b) => (a.bgWhite! < b.bgWhite! ? a : b));
     const ok = worst.bgWhite! >= want;
@@ -217,6 +446,8 @@ function checkVision(rule: string, files: FileFacts[]): RuleResult | null {
   if (sat) {
     const want = Number(sat[1]) / 100;
     const images = files.filter((f) => isImage(f) && typeof f.avgSaturation === "number");
+    if (!images.length && files.some(isVideo))
+      return { pass: false, note: "colour across a whole video needs an eye — watch it", kind: "manual" };
     if (!images.length) return { pass: false, note: "no image pixels to measure", kind: "measured" };
     const worst = images.reduce((a, b) => (a.avgSaturation! > b.avgSaturation! ? a : b));
     const ok = worst.avgSaturation! <= want;
@@ -288,6 +519,10 @@ export function evaluateRule(rule: string, files: FileFacts[], ctx: VerifyContex
     checkMime,
     checkAlpha,
     checkDimensions,
+    checkDuration,
+    checkAudio,
+    checkAspect,
+    checkFileSize,
     checkVision,
     checkText,
   ];
