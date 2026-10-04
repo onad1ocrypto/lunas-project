@@ -60,6 +60,34 @@ export default function CheckoutPage() {
   const funded = order ? ["in_escrow", "verifying", "revision", "review", "paid"].includes(order.status) : false;
   const gross = order ? Number((order.amount * (1 + FEE)).toFixed(2)) : 0;
 
+  /**
+   * Redirect flow: PayPal sends the buyer back with ?token=<paypalOrderId>&PayerID=…
+   * (this happens whenever the popup is blocked or the buyer pays on paypal.com).
+   * Capture is idempotent server-side, so running it here is safe.
+   */
+  useEffect(() => {
+    const token = params.get("token");
+    const cancelled = params.get("status") === "cancel";
+    if (!token || cancelled || !order || funded) return;
+    let alive = true;
+    (async () => {
+      setBusy(true);
+      const res = await api.captureEscrowPayment(token, order.id);
+      if (!alive) return;
+      setBusy(false);
+      if (res.ok) {
+        setReceipt({ captureId: res.data.captureId, paypalOrderId: token, payerEmail: res.data.paypal?.payerEmail });
+        setFire((f) => f + 1);
+        load();
+      } else {
+        setError(res.error ?? "We could not capture that payment.");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [params, order, funded, load]);
+
   return (
     <div className="pay-shell">
       <header className="pub-nav">

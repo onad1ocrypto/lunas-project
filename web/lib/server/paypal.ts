@@ -83,9 +83,32 @@ async function rest<T>(
   };
 }
 
+/**
+ * PayPal returns the useful part of a failure in `details[]`
+ * (e.g. {"issue":"INVALID_CURRENCY_CODE","description":"..."}), so surface all of it —
+ * a generic "something went wrong" is impossible to debug in production.
+ */
 function describeError(data: unknown, status: number) {
-  const d = data as { message?: string; error_description?: string; name?: string };
-  return d?.message ?? d?.error_description ?? d?.name ?? `HTTP ${status}`;
+  const d = data as {
+    message?: string;
+    error_description?: string;
+    name?: string;
+    details?: { issue?: string; description?: string; field?: string; location?: string }[];
+    links?: { href: string; rel: string }[];
+  };
+  const parts: string[] = [];
+  if (d?.name) parts.push(d.name);
+  if (d?.message) parts.push(d.message);
+  if (d?.error_description) parts.push(d.error_description);
+  for (const det of d?.details ?? []) {
+    const bit = [det.issue, det.description, det.field && `field=${det.field}`, det.location && `at ${det.location}`]
+      .filter(Boolean)
+      .join(": ");
+    if (bit) parts.push(bit);
+  }
+  const link = d?.links?.find((l) => l.rel === "information_link")?.href;
+  if (link) parts.push(`see ${link}`);
+  return parts.length ? [...new Set(parts)].join(" · ") : `HTTP ${status}`;
 }
 
 /* -------------------------------------------------------------- simulation */
