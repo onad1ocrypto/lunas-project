@@ -60,10 +60,17 @@ export default function ProfilePage() {
   const [draft, setDraft] = useState<MeProfile>(me);
   const [toast, setToast] = useState("");
   const [welcomed, setWelcomed] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [publication, setPublication] = useState<{ published: boolean; handle?: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const ping = (m: string) => { setToast(m); setTimeout(() => setToast(""), 2600); };
+  /* One timer at a time: a previous message's timer must not cut the next one short
+     (photo → save happens well inside the 2.6s window). */
+  const ping = (m: string) => {
+    setToast(m);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), 2600);
+  };
   const asPaypal = session.mode === "paypal";
   const portfolio = me.portfolio ?? [];
   const socialsOf = (p: MeProfile) =>
