@@ -3,8 +3,8 @@
    - Contract Agent: brief -> title/amount/machine-checkable criteria.
    - Verification Agent: criteria + delivery -> per-criterion verdicts.
    Both use a real LLM when LLM_API_KEY is set (OpenAI-compatible
-   endpoint, override with LLM_BASE_URL / LLM_MODEL), and fall back
-   to a deterministic local engine so the demo always works.
+   endpoint, override with LLM_BASE_URL / LLM_MODEL / LLM_MODELS), and
+   fall back to a deterministic local engine so the demo always works.
    ========================================================= */
 
 import { draftCriteria, type Criterion } from "./data";
@@ -18,14 +18,35 @@ const LLM_MODEL = () => process.env.LLM_MODEL || "gpt-4o-mini";
 
 const ICONS = ["file", "image", "ruler", "palette", "clock", "text"] as const;
 
-async function llmJSON(system: string, user: string): Promise<Record<string, unknown> | null> {
-  if (!llmEnabled()) return null;
+/* Free tiers spike: the same endpoint answers 200, then 503 "high demand", then 200
+   again minutes later (verified against Gemini's free tier). A single attempt would
+   silently drop the agents back to the local engine mid-demo, so one call now walks a
+   short list of models and retries inside a total time budget — small enough that the
+   route still finishes well inside the serverless limit, and honest either way: if
+   nothing answers, the result is still marked `source: "local"`. */
+const LLM_ATTEMPTS_PER_MODEL = 2;
+const LLM_ATTEMPT_TIMEOUT_MS = 20_000;
+const LLM_TOTAL_BUDGET_MS = 90_000;
+const PREVIEW_PAUSE_MS = 600;
+
+/** Models to try in order: LLM_MODELS (comma separated) wins, else the single LLM_MODEL. */
+function llmModels(): string[] {
+  const list = (process.env.LLM_MODELS ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  return (list.length ? list : [LLM_MODEL()]).slice(0, 4);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** One request to one model. Returns null on anything that is not a usable JSON answer. */
+async function llmAsk(model: string, system: string, user: string): Promise<Record<string, unknown> | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), LLM_ATTEMPT_TIMEOUT_MS);
   try {
     const r = await fetch(LLM_URL(), {
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.LLM_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: LLM_MODEL(),
+        model,
         temperature: 0.2,
         messages: [
           { role: "system", content: system },
@@ -33,6 +54,7 @@ async function llmJSON(system: string, user: string): Promise<Record<string, unk
         ],
       }),
       cache: "no-store",
+      signal: ctl.signal,
     });
     if (!r.ok) return null;
     const j = (await r.json()) as { choices?: { message?: { content?: string } }[] };
@@ -41,7 +63,23 @@ async function llmJSON(system: string, user: string): Promise<Record<string, unk
     return m ? (JSON.parse(m[0]) as Record<string, unknown>) : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function llmJSON(system: string, user: string): Promise<Record<string, unknown> | null> {
+  if (!llmEnabled()) return null;
+  const deadline = Date.now() + LLM_TOTAL_BUDGET_MS;
+  for (const model of llmModels()) {
+    for (let attempt = 1; attempt <= LLM_ATTEMPTS_PER_MODEL; attempt++) {
+      const j = await llmAsk(model, system, user);
+      if (j) return j;
+      if (Date.now() > deadline) return null;
+      if (attempt < LLM_ATTEMPTS_PER_MODEL) await sleep(PREVIEW_PAUSE_MS * attempt);
+    }
+  }
+  return null;
 }
 
 const CONTRACT_SYSTEM = `You are the Contract Agent of Lunas, an escrow platform for freelancers.

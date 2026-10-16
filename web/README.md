@@ -85,6 +85,7 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 | `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | Client id for any browser-side PayPal usage. |
 | `LLM_API_KEY` | Contract / Verification / Mediator agents. Without it they use the local deterministic engine. |
 | `LLM_BASE_URL`, `LLM_MODEL` | Any OpenAI-compatible gateway (default `https://api.openai.com/v1/chat/completions`, `gpt-4o-mini`). |
+| `LLM_MODELS` | Optional comma-separated list of models to try in order. Free tiers answer `503 high demand` in bursts, so each model is attempted twice inside a 90-second budget before the agents admit `source: "local"`. |
 | `NEXT_PUBLIC_AG_STUDIO_LICENSE` | AG Studio trial key for `/insights`. Front-end licence by design; without it the dashboard still works but shows a watermark. Evaluation only. |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Publishes profiles so clients on other devices see the real photo/links/portfolio. Create the table with `../supabase/setup.sql`. The **secret** key is server-only — no `NEXT_PUBLIC_` prefix. |
 | `AUTH_SECRET` | HMAC key that signs the session cookie. Falls back to `PAYPAL_CLIENT_SECRET`; set it to keep the two keys separate. |

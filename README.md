@@ -82,6 +82,7 @@ PAYPAL_WEBHOOK_ID                         # enables webhook signature verificati
 PAYPAL_LIVE=1                             # switch from sandbox to live
 LLM_API_KEY                               # Contract / Verification / Mediator agents
 LLM_BASE_URL / LLM_MODEL                  # any OpenAI-compatible gateway
+LLM_MODELS                                # optional: models to try in order when a free tier spikes
 AUTH_SECRET                               # signs the session cookie (falls back to PAYPAL_CLIENT_SECRET)
 APP_ORIGIN                                # optional: public origin used for the OAuth return URL
 SUPABASE_URL / SUPABASE_SERVICE_KEY       # publishes profiles so clients see them (optional)
