@@ -6,10 +6,24 @@ Lunas turns a vague client brief into a clear contract with machine-checkable ac
 
 Live: **https://lunasproject.site** *(Vercel mirror: https://lunas-project.vercel.app)*
 
+<p align="center">
+  <a href="https://lunasproject.site">
+    <img src="docs/screenshots/00-hero-banner.jpg" alt="Lunas — AI-Verified Escrow for Freelancers" width="100%" />
+  </a>
+</p>
+
 ### The story it tells
 
 SASAM, a product-photo editor in Indonesia, gets a brief from James in Austin: _20 photos, white background, 2000px, JPG, $150._
 Lunas drafts the contract → James funds the escrow with PayPal → SASAM delivers → the Verification Agent checks the criteria → one file fails → revision → re-upload passes → review window → payout via PayPal → **LUNAS!**
+
+### Product tour
+
+| | |
+|---|---|
+| ![Overview & LUNAS Stamp](docs/screenshots/01-overview-landing.png)<br><sub><b>1. Cross-border escrow</b> — Trilingual UI (EN / 中文 / ID), PayPal-backed escrow, and the LUNAS stamp.</sub> | ![Client Booking & Gemini Contract Agent](docs/screenshots/02-client-booking-ai-contract.png)<br><sub><b>2. Zero-signup client page</b> — Clients hire via `/to/<handle>` while Gemini turns plain briefs into checkable rules.</sub> |
+| ![PayPal Orders v2 Escrow](docs/screenshots/03-paypal-escrow-funding.png)<br><sub><b>3. PayPal Orders v2 escrow</b> — Idempotent deposit capture locks client funds safely before work begins.</sub> | ![Real-File Verification Engine](docs/screenshots/04-real-file-verification.png)<br><sub><b>4. Honest real-file verification</b> — Decodes pixels, formats, video & audio; catches `IMG_014.jpg`'s grey background.</sub> |
+| ![Gemini Mediator & PayPal Refunds](docs/screenshots/05-ai-mediator-refunds.png)<br><sub><b>5. Dispute arbitration & Refunds</b> — Gemini Mediator weighs verified checks to trigger exact partial/full PayPal Refunds.</sub> | ![AG Studio Insights Dashboard](docs/screenshots/06-ag-studio-insights.png)<br><sub><b>6. AG Studio Insights</b> — Self-serve analytics across orders, PayPal API money events, and AI agent runs.</sub> |
 
 ---
 
@@ -53,7 +67,7 @@ device it still arrives — requests are stored server-side, not in a tab.
 | `design-prototype.html` | Early self-contained interactive prototype of the 5-step flow |
 | `supabase/` | One SQL file that creates the public-profile table (`setup.sql`) |
 | `tools/` | Local Playwright screenshot helpers (dev only, not deployed) |
-| `docs/` | Notes on tooling — [the APIMatic Context Plugin audit](docs/apimatic-context-plugin.md) behind the PayPal transport, and `docs/evidence/` with the real-file tests for the video verification |
+| `docs/` | Notes on tooling — [the APIMatic Context Plugin audit](docs/apimatic-context-plugin.md) behind the PayPal transport, `docs/screenshots/` product tour visuals, and `docs/evidence/` with the real-file tests for the video verification |
 
 ## Run it
 
