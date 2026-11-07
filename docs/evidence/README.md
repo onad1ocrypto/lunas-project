@@ -66,4 +66,4 @@ python3 docs/evidence/uji-video.py       # the same thing driven through the UI,
 ```
 
 Both scripts need `pip install playwright && playwright install chromium`.
-The offline rule-engine tests (`bash web/scripts/uji-verify-video.sh`, 41 assertions) need neither.
+The offline rule-engine tests (`bash web/scripts/uji-verify-video.sh`, 50 assertions) need neither.

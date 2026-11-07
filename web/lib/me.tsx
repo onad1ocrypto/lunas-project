@@ -36,6 +36,10 @@ export interface Session {
 /* One profile per identity: the guest profile and each PayPal account keep their own edits. */
 const LEGACY_KEY = "lunas.me";
 const PROFILES_KEY = "lunas.profiles";
+/* A brand-new browser has neither a PayPal cookie nor an explicit guest choice yet,
+   so visiting /dashboard sends the visitor to /signin first instead of dropping them
+   straight into the demo account uninvited. */
+const GUEST_ACTIVE_KEY = "lunas.guest.active";
 const keyOf = (id: string) => `${PROFILES_KEY}.${id}`;
 const identityOf = (s: Session) => (s.mode === "paypal" && s.paypal ? `pp.${s.paypal.payerId}` : "guest");
 
@@ -121,6 +125,8 @@ interface Ctx {
   setMe: (p: MeProfile) => void;
   session: Session;
   sessionReady: boolean;
+  /** True only after Log in with PayPal OR clicking "Open the app as a guest" on /signin. */
+  signedIn: boolean;
   signInWithPayPal: () => void;
   signInAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -147,6 +153,7 @@ async function endServerSession(): Promise<void> {
 export function MeProvider({ children }: { children: ReactNode }) {
   const [me, setMeState] = useState<MeProfile>(ME_DEFAULT);
   const [session, setSession] = useState<Session>({ mode: "guest" });
+  const [guestActive, setGuestActive] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [justSignedOut, setJustSignedOut] = useState(false);
 
@@ -162,7 +169,9 @@ export function MeProvider({ children }: { children: ReactNode }) {
         /* offline / API error -> stay guest */
       }
       if (!alive) return;
+      const explicitGuest = s.mode === "guest" && lsGet(GUEST_ACTIVE_KEY) === "1";
       setSession(s);
+      setGuestActive(explicitGuest);
       setMeState(readProfile(s));
       setSessionReady(true);
     })();
@@ -187,35 +196,44 @@ export function MeProvider({ children }: { children: ReactNode }) {
     window.location.href = "/api/auth/paypal/start";
   }, []);
 
-  /* Back to guest mode: forget the server session and this device's demo profile.
+  /* Leave the app cleanly: forget both the server PayPal session and any active guest flag.
      The server call is awaited (with a short leash) so the cookie is really gone before
      the caller navigates — firing and forgetting lost the race against the reload and
      the visitor came back signed in. */
   const signOut = useCallback(async () => {
     await endServerSession();
     try {
+      lsRemove(GUEST_ACTIVE_KEY);
       lsRemove(keyOf("guest"));
       lsRemove(LEGACY_KEY);
     } catch {
       /* nothing to clear */
     }
+    setGuestActive(false);
     setSession({ mode: "guest" });
     setMeState(ME_DEFAULT);
     setJustSignedOut(true);
   }, []);
 
-  /* "Continue as guest" from the sign-in page: same as sign-out, without the farewell toast. */
+  /* "Open the app as a guest" from /signin: explicitly activates guest mode in this browser. */
   const signInAsGuest = useCallback(async () => {
     await endServerSession();
+    try {
+      lsSet(GUEST_ACTIVE_KEY, "1");
+    } catch {
+      /* private mode -> in-memory guestActive still works for this tab */
+    }
+    setGuestActive(true);
     setSession({ mode: "guest" });
     setMeState(readProfile({ mode: "guest" }));
   }, []);
 
   const clearJustSignedOut = useCallback(() => setJustSignedOut(false), []);
+  const signedIn = session.mode === "paypal" || guestActive;
 
   const value = useMemo<Ctx>(
-    () => ({ me, setMe, session, sessionReady, signInWithPayPal, signInAsGuest, signOut, justSignedOut, clearJustSignedOut }),
-    [me, setMe, session, sessionReady, signInWithPayPal, signInAsGuest, signOut, justSignedOut, clearJustSignedOut]
+    () => ({ me, setMe, session, sessionReady, signedIn, signInWithPayPal, signInAsGuest, signOut, justSignedOut, clearJustSignedOut }),
+    [me, setMe, session, sessionReady, signedIn, signInWithPayPal, signInAsGuest, signOut, justSignedOut, clearJustSignedOut]
   );
   return <MeCtx.Provider value={value}>{children}</MeCtx.Provider>;
 }

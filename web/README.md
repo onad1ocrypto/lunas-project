@@ -89,7 +89,7 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 | `NEXT_PUBLIC_AG_STUDIO_LICENSE` | AG Studio trial key for `/insights`. Front-end licence by design; without it the dashboard still works but shows a watermark. Evaluation only. |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Publishes profiles so clients on other devices see the real photo/links/portfolio. Create the table with `../supabase/setup.sql`. The **secret** key is server-only — no `NEXT_PUBLIC_` prefix. |
 | `AUTH_SECRET` | HMAC key that signs the session cookie. Falls back to `PAYPAL_CLIENT_SECRET`; set it to keep the two keys separate. |
-| `APP_ORIGIN` | Optional. Public origin used to build the OAuth return URL (e.g. `https://lunas-project.vercel.app`). Must match the **Return URL** registered in the PayPal dashboard. |
+| `APP_ORIGIN` | Optional. Public origin used to build the OAuth return URL (e.g. `https://lunasproject.site`). Must match the **Return URL** registered in the PayPal dashboard. |
 | `BUILD_SHA` | Build stamp shown in the footer (injected by the deploy script). |
 
 ## Structure
@@ -108,7 +108,7 @@ Copy `.env.example` → `.env.local`, or set these in Vercel → Project → Set
 - `lib/agent.ts` — Contract / Verification / Mediator agents (LLM + local fallback)
 - `lib/paypal.ts` — PayPal REST client: Orders v2, Payouts v1, Refunds, webhook verification. Reviewed against the **APIMatic PayPal Server SDK Context Plugin** (TypeScript skills) — see [`../docs/apimatic-context-plugin.md`](../docs/apimatic-context-plugin.md)
 - `scripts/uji-transport-paypal.sh` — offline proof for the above: stubs PayPal, asserts 21 transport behaviours (no credentials, no network)
-- `scripts/uji-verify-video.sh` — offline proof for the rule engine: 34 assertions over video/audio/photo/document criteria (no browser needed)
+- `scripts/uji-verify-video.sh` — offline proof for the rule engine: 50 assertions over video/audio/photo/document criteria (no browser needed)
 - `lib/webhook.ts` — in-memory buffer so the Agent activity panel can show real push events
 - `components/` — Capi mascot, money rail, UI primitives, app shell
 

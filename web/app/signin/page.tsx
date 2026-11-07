@@ -16,12 +16,17 @@ export default function SignInPage() {
   const router = useRouter();
   const { me, session, sessionReady, signInWithPayPal, signInAsGuest } = useMe();
   const [error, setError] = useState("");
+  const [nextPath, setNextPath] = useState("/dashboard");
 
-  /* Read ?error= / ?welcome= without touching useSearchParams (keeps this page static). */
+  /* Read ?error= / ?next= without touching useSearchParams (keeps this page static). */
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const e = q.get("error");
     if (e) setError((ERRORS as readonly string[]).includes(e) ? e : "generic");
+    const n = q.get("next") || "";
+    if (n.startsWith("/") && !n.startsWith("//") && !n.startsWith("/signin")) {
+      setNextPath(n);
+    }
   }, []);
 
   const paypalOff = sessionReady && session.paypalLoginAvailable === false;
@@ -108,7 +113,7 @@ export default function SignInPage() {
             <button
               className="btn pink lg"
               style={{ marginTop: 20, width: "100%", justifyContent: "center" }}
-              onClick={async () => { await signInAsGuest(); router.push("/dashboard"); router.refresh(); }}
+              onClick={async () => { await signInAsGuest(); router.push(nextPath); router.refresh(); }}
             >
               {t("signin.guest.cta")} <Icon name="right" size={18} />
             </button>

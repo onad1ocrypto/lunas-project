@@ -15,7 +15,7 @@ import { Avatar, Confetti, Country, LangSwitch, Logo, Product, ThemeSwitch } fro
 
 export default function PublicOrderPage() {
   const { t, money, lang } = useI18n();
-  const { me } = useMe();
+  const { me, signedIn } = useMe();
   const params = useParams<{ handle: string }>();
   const handle = (params?.handle ?? "").toString();
   /* A profile published to the server wins: that is the real one, the one clients see
@@ -81,7 +81,11 @@ export default function PublicOrderPage() {
         <div className="row" style={{ gap: 10 }}>
           <ThemeSwitch />
           <LangSwitch compact />
-          <Link href="/dashboard" className="btn sm">{t("pub.imSari", { name: me.name.split(" ")[0] })}</Link>
+          {signedIn && me.handle.toLowerCase() === handle.toLowerCase() ? (
+            <Link href="/dashboard" className="btn sm">{t("pub.imSari", { name: firstName })}</Link>
+          ) : (
+            <Link href={signedIn ? "/dashboard" : "/signin"} className="btn sm">{signedIn ? t("lp.openApp") : t("lp.signin")}</Link>
+          )}
         </div>
       </header>
 

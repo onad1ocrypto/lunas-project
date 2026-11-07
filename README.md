@@ -4,7 +4,7 @@
 
 Lunas turns a vague client brief into a clear contract with machine-checkable acceptance criteria, locks the client's money in a PayPal-funded escrow, lets a Verification Agent check the deliverable, and releases the payout automatically — finished with a satisfying **LUNAS** stamp (Indonesian for _"paid in full"_).
 
-Live: **https://lunas-project.vercel.app**
+Live: **https://lunasproject.site** *(Vercel mirror: https://lunas-project.vercel.app)*
 
 ### The story it tells
 
@@ -26,16 +26,10 @@ Connected that way, the profile becomes the user's own: name, handle, city, bio 
 
 ### Try it as a judge (2 minutes)
 
-1. Open **https://lunas-project.vercel.app/signin**
-2. **Guest mode** needs nothing — click *Open the app as a guest*.
-3. For the PayPal path, use the sandbox tester account below (sandbox only: fake money, no real account, no funding source):
-
-   ```
-   email:    <sandbox tester email — filled in before submission>
-   password: <sandbox tester password — filled in before submission>
-   ```
-
-4. You land on your own profile, then walk the money flow on any order: open **Lunas Orders → LNS-0142 → Approve & pay**, and pay with that same tester account.
+1. Open **https://lunasproject.site/signin**
+2. **Guest mode** needs nothing — click *Open the app as a guest* to load the shared **SASAM** demo profile immediately.
+3. For the **Log in with PayPal** path, sign in with **any PayPal Sandbox Personal account** from your [PayPal Developer Dashboard](https://developer.paypal.com/dashboard/accounts) (*Testing Tools → Sandbox Accounts*; sandbox fake money only, no real account or funding source) — or use the sandbox tester credentials included in the Devpost judging notes.
+4. You land on your own profile, then walk the money flow on any order: open **Lunas Orders → LNS-0142 → Approve & pay**, and pay with a sandbox buyer account.
 
 #### The other direction: a client hiring you
 
@@ -46,7 +40,7 @@ The request lands in **Orders → From clients** wearing a *New request* ribbon;
 open it and press **Accept** to move it to the PayPal step. Sent from another
 device it still arrives — requests are stored server-side, not in a tab.
 
-> This is a **sandbox** account created in the PayPal Developer Dashboard (*Testing Tools → Sandbox Accounts*). If it ever runs out of test balance, a new one takes 10 seconds to create. Sign-in needs **Log in with PayPal** enabled for the app in the dashboard (Return URL must match `https://lunas-project.vercel.app/api/auth/paypal/callback` exactly); if it is not enabled, the button says so and guest mode still gives full access.
+> This uses **PayPal Sandbox** (*Testing Tools → Sandbox Accounts* in the PayPal Developer Dashboard). If a test account ever runs low on balance, a fresh one takes 10 seconds to create. Sign-in uses **Log in with PayPal** (Return URL registered for `https://lunasproject.site/api/auth/paypal/callback`); guest mode also gives full end-to-end access with zero login.
 
 ---
 
@@ -178,7 +172,7 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 - [x] Two ways in: guest mode (SASAM) and **Log in with PayPal** (Identity API) sessions, per-account profiles
 - [x] Publish a profile to Supabase so clients see the real photo and portfolio on `/to/<handle>`
 - [x] **Insights** — a self-serve dashboard (AG Studio) over the orders, the PayPal money events and the agent runs
-- [x] **Delivery verification that reads the actual files** — count, format, dimensions, transparency, background whiteness and word counts measured in the browser; a criterion nothing could measure is reported as needing a human eye, never as a pass
+- [x] **Delivery verification that reads the actual files** — count, format, dimensions, transparency, background whiteness and word counts measured in the browser; a criterion nothing could measure is reported as needing a human eye, never as a pass — verified offline by `web/scripts/uji-verify-video.sh` (50 assertions)
 - [x] **Not just photos:** video and audio are measured too — duration, frame size and aspect ratio from the file's own metadata, and the audio track's mean level in dBFS (RMS), tested against real files (see `docs/evidence/`); a silent render fails, an unreadable track is handed to a human
 - [x] Profile: photo upload (resized in the browser), social links (X, LinkedIn, Instagram, website) and a portfolio list that clients see on the public page
 - [x] PayPal REST integration: Orders v2 create + capture, Payouts v1 release, Payments v1 refund, webhook signature verification

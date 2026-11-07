@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
-import { maskEmail, useMe } from "@/lib/me";
+import { locationOf, maskEmail, useMe } from "@/lib/me";
 import { Capi } from "@/components/Capi";
 import { CapiPose } from "@/components/ui";
 import { Icon } from "@/components/Icon";
@@ -12,11 +12,12 @@ import { Confetti, Kicker, LangSwitch, Logo, ThemeSwitch, Toast } from "@/compon
 const MARQ_KEYS = Array.from({ length: 10 }, (_, i) => `marq.${i + 1}`);
 
 export default function Landing() {
-  const { t, money } = useI18n();
-  const { me, session, justSignedOut, clearJustSignedOut } = useMe();
+  const { t, money, lang } = useI18n();
+  const { me, session, signedIn, justSignedOut, clearJustSignedOut } = useMe();
   const [stamped, setStamped] = useState(0);
   const [pairIdx, setPairIdx] = useState(0);
   const [bye, setBye] = useState(false);
+  const appHref = signedIn ? "/dashboard" : "/signin";
 
   /* Arriving here right after "Sign out": confirm it with the toast, then forget the flag. */
   useEffect(() => {
@@ -51,14 +52,18 @@ export default function Landing() {
         <div className="row" style={{ gap: 10 }}>
           <ThemeSwitch />
           <LangSwitch compact />
-          {session.mode === "paypal" && session.paypal ? (
+          {signedIn && session.mode === "paypal" && session.paypal ? (
             <Link href="/signin" className="chip" style={{ gap: 8, fontWeight: 800 }} title={t("me.signed.pp")}>
               <span className="dot" style={{ background: "var(--green)" }} /> {maskEmail(session.paypal.email)}
+            </Link>
+          ) : signedIn ? (
+            <Link href="/signin" className="chip" style={{ gap: 8, fontWeight: 800 }}>
+              <span className="dot" style={{ background: "var(--lemon)" }} /> {me.name}
             </Link>
           ) : (
             <Link href="/signin" className="btn sm">{t("lp.signin")}</Link>
           )}
-          <Link href="/dashboard" className="btn ink sm">{t("lp.openApp")} <Icon name="right" size={16} /></Link>
+          <Link href={appHref} className="btn ink sm">{t("lp.openApp")} <Icon name="right" size={16} /></Link>
         </div>
       </header>
 
@@ -71,8 +76,8 @@ export default function Landing() {
           </h1>
           <p className="lp-sub muted">{t("lp.sub")}</p>
           <div className="row wrap" style={{ gap: 12, marginTop: 26 }}>
-            <Link href="/orders/new" className="btn pink lg pulse-ring">{t("lp.cta1")} <Icon name="send" size={18} /></Link>
-            <Link href={`/to/${me.handle}`} className="btn lg">{t("lp.cta2")}</Link>
+            <Link href={signedIn ? "/orders/new" : "/signin?next=%2Forders%2Fnew"} className="btn pink lg pulse-ring">{t("lp.cta1")} <Icon name="send" size={18} /></Link>
+            <Link href={signedIn ? `/to/${me.handle}` : "/to/lunas-studio"} className="btn lg">{t("lp.cta2")}</Link>
           </div>
           <div className="row wrap" style={{ gap: 18, marginTop: 22, fontWeight: 800, fontSize: 13.5 }}>
             <span className="row" style={{ gap: 6 }}><Icon name="shield" size={18} /> {t("lp.trust1")}</span>
@@ -189,7 +194,7 @@ export default function Landing() {
             <div key={stamped} className={`card paper-fix ${stamped ? "shake" : ""}`} style={{ width: "min(340px,100%)", padding: 24, position: "relative", background: "#FFFEFA" }}>
               <div className="kbd">{t("try.receipt")}</div>
               <div className="display" style={{ fontSize: 40, margin: "8px 0 14px" }}>{money(150)}</div>
-              {[[t("try.r.to"), `${me.name.split(" ")[0]} · ${me.city}`], [t("try.r.from"), "James · Austin"], [t("try.r.check"), "4 / 4 ✓"]].map(([a, b]) => (
+              {[[t("try.r.to"), `${me.name.split(" ")[0]} · ${locationOf(me, lang)}`], [t("try.r.from"), "James · Austin"], [t("try.r.check"), "4 / 4 ✓"]].map(([a, b]) => (
                 <div key={a} className="row between" style={{ padding: "8px 0", borderBottom: "2px dashed rgba(35,25,66,.15)", fontSize: 14 }}>
                   <span className="muted">{a}</span><b>{b}</b>
                 </div>
@@ -218,7 +223,7 @@ export default function Landing() {
             <h2 style={{ fontSize: "clamp(26px,3.4vw,40px)" }}>{t("cta.title")}</h2>
             <p style={{ marginTop: 8, fontWeight: 700, opacity: .85 }}>{t("cta.body")}</p>
           </div>
-          <Link href="/dashboard" className="btn lemon lg">{t("lp.openApp")} <Icon name="right" size={18} /></Link>
+          <Link href={appHref} className="btn lemon lg">{t("lp.openApp")} <Icon name="right" size={18} /></Link>
         </div>
       </section>
 

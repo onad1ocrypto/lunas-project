@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useMe } from "@/lib/me";
@@ -12,20 +12,43 @@ import { listIncoming } from "@/lib/requests";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
-  const { me } = useMe();
+  const { me, sessionReady, signedIn } = useMe();
   const path = usePathname();
+  const router = useRouter();
+
+  /* Never drop a fresh browser straight into the SASAM guest account: if neither
+     PayPal nor explicit guest mode has been chosen yet, send the visitor to /signin. */
+  useEffect(() => {
+    if (!sessionReady || signedIn) return;
+    const qs = typeof window !== "undefined" ? window.location.search : "";
+    const next = `${path}${qs}`;
+    router.replace(`/signin?next=${encodeURIComponent(next)}`);
+  }, [sessionReady, signedIn, path, router]);
+
   /* Requests sent from a client's public page arrive here too — the badge is not
      a decoration, it is the number of people waiting for an answer. */
   const [arrived, setArrived] = useState(0);
   useEffect(() => {
+    if (!sessionReady || !signedIn) return;
     let alive = true;
     listIncoming(me.handle).then((rs) => {
       if (alive) setArrived(rs.filter((r) => r.status === "new").length);
     });
     return () => { alive = false; };
-  }, [me.handle]);
+  }, [me.handle, sessionReady, signedIn]);
   const incoming = ORDERS.filter((o) => o.direction === "from_client" && o.status === "request").length + arrived;
   const todo = ORDERS.filter((o) => NEEDS_ME.includes(o.status)).length + arrived;
+
+  if (!sessionReady || !signedIn) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
+        <div className="col" style={{ alignItems: "center", gap: 12 }}>
+          <CapiPose pose="idle" size={84} className="capi-float" />
+          <span className="spin" style={{ width: 22, height: 22, border: "3px solid var(--ink)", borderTopColor: "transparent", borderRadius: "50%" }} />
+        </div>
+      </div>
+    );
+  }
 
   const nav = [
     { href: "/dashboard", icon: "home", label: t("nav.dashboard"), color: "var(--lemon)" },
