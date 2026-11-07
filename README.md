@@ -198,4 +198,4 @@ The mark: a gold crest over navy — handshake, laurel and dollar. The top-corne
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache License 2.0 — Copyright © 2026 [onad1ocrypto](https://github.com/onad1ocrypto). See [LICENSE](LICENSE) and [NOTICE](NOTICE).
