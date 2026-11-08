@@ -8,6 +8,7 @@
     "start": "next start -H 0.0.0.0 -p 3000"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "ag-studio": "^3.0.0",
     "ag-studio-react": "^3.0.0",
     "html-to-image": "^1.11.13",
