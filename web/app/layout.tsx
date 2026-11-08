@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Nunito } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { I18nProvider } from "@/lib/i18n";
 import { MeProvider } from "@/lib/me";
 import { ThemeProvider } from "@/lib/theme";
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <I18nProvider>{children}</I18nProvider>
           </MeProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
