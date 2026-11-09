@@ -13,9 +13,28 @@ const fraunces = Fraunces({
 });
 const nunito = Nunito({ subsets: ["latin"], variable: "--font-nunito", display: "swap" });
 
+const SITE = "https://lunasproject.site";
+
 export const metadata: Metadata = {
-  title: "Lunas — Get paid. Stamp it. Done.",
-  description: "AI-verified escrow for freelancers and their clients, powered by PayPal.",
+  metadataBase: new URL(SITE),
+  title: "Lunas — AI-verified escrow for freelancers, powered by PayPal",
+  description:
+    "AI-verified escrow for freelancers and their clients, powered by PayPal. Get paid. Stamp it. Done.",
+  alternates: { canonical: `${SITE}/` },
+  openGraph: {
+    type: "website",
+    siteName: "Lunas",
+    url: `${SITE}/`,
+    title: "Lunas — AI-verified escrow for freelancers, powered by PayPal",
+    description:
+      "AI-verified escrow for freelancers and their clients, powered by PayPal. Get paid. Stamp it. Done.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Lunas — AI-verified escrow for freelancers, powered by PayPal",
+    description:
+      "AI-verified escrow for freelancers and their clients, powered by PayPal. Get paid. Stamp it. Done.",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
